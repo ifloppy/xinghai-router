@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: router
+      POSTGRES_USER: router
+      POSTGRES_PASSWORD: router
+    ports: ["5432:5432"]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+volumes:
+  postgres-data:

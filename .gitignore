@@ -1,0 +1,6 @@
+.env
+bin/
+router
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
