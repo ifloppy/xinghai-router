@@ -19,3 +19,9 @@ label { display: grid; gap: 7px; margin: 15px 0; color: #3f3f46; font-size: 12px
 .auth-tabs { display: flex; gap: 4px; margin: 20px 0; padding: 4px; background: #f4f4f5; border-radius: 8px; }
 .auth-tabs button { flex: 1; border: 0; border-radius: 5px; padding: 8px 4px; background: transparent; color: #71717a; cursor: pointer; font: inherit; font-size: 12px; }
 .auth-tabs button.active { background: #fff; color: #18181b; box-shadow: 0 1px 3px rgb(0 0 0 / 10%); }
+
+/* The content is already placed in the second grid column; offsetting it again collapses the dashboard. */
+.app-shell { grid-template-columns: 240px minmax(0, 1fr); }
+.content { min-width: 0; width: auto; margin-left: 0; }
+.metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }

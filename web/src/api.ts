@@ -7,13 +7,13 @@ export interface Pricing { id: string; model: string; input_per_million: number;
 export interface UsageRecord { request_id: string; model: string; prompt_tokens: number; cached_prompt_tokens: number; completion_tokens: number; cost: number; status: string; created_at: string }
 export interface LedgerEntry { id: string; amount: number; balance_after: number; kind: string; request_id: string | null; note: string | null; created_at: string }
 
-let token = sessionStorage.getItem('xinghai.admin-token') ?? ''
+let token = import.meta.client ? sessionStorage.getItem('xinghai.admin-token') ?? '' : ''
 export const getToken = () => token
 export const setToken = (value: string) => { token = value.trim(); sessionStorage.setItem('xinghai.admin-token', token) }
 export const clearToken = () => { token = ''; sessionStorage.removeItem('xinghai.admin-token') }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers } })
+  const response = await fetch(`/api${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers } })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     throw new Error(body?.error?.message ?? `请求失败 (${response.status})`)

@@ -31,7 +31,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173/auth` and create an account or sign in with email and password. The first registered account becomes an administrator; administrators can promote users or grant individual permissions. Browser sessions are retained only in session storage. Vite proxies `/admin`, `/auth`, and `/account` calls to `http://localhost:8080`, so this development setup does not require a CORS policy. Create a production deployment by running `npm run build`; serve the generated `web/dist` directory behind the router or a reverse proxy.
+Open `http://localhost:5173/auth` and create an account or sign in with email and password. The first registered account becomes an administrator; administrators can promote users or grant individual permissions. Browser sessions are retained only in session storage. Nuxt proxies browser requests from `/api/*` to `http://127.0.0.1:8080/*`, so this development setup does not require a CORS policy. `npm run generate` emits prerendered HTML for the public home and authentication pages; deploy the Nuxt `.output` directory for the full application.
 
 The service performs migrations automatically at startup. `base_url` for a channel must be an HTTPS origin or path prefix without `/v1`; for example, `https://api.openai.com`. Provider secrets are encrypted in the database using `ENCRYPTION_KEY`, so keep this value stable and securely backed up.
 

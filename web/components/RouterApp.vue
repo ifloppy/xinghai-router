@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Activity, Bot, Check, ChevronRight, CircleAlert, Copy, KeyRound, LayoutDashboard, LogOut, Plus, RadioTower, RefreshCw, TerminalSquare, Users, WalletCards, ReceiptText, Tags } from 'lucide-vue-next'
-import { api, clearToken, getToken, setToken } from './api'
-import type { Account, ApiKey, Channel, LedgerEntry, Pricing, RequestLog, UsageRecord, User } from './api'
+import { api, clearToken, getToken, setToken } from '~/src/api'
+import type { Account, ApiKey, Channel, LedgerEntry, Pricing, RequestLog, UsageRecord, User } from '~/src/api'
 
 type View = 'overview' | 'users' | 'keys' | 'channels' | 'logs' | 'account' | 'usage' | 'ledger' | 'pricing' | 'audit'
-const view = ref<View>('overview')
-const authenticated = ref(Boolean(getToken()))
+const props = defineProps<{ activeView?: View }>()
+const route = useRoute()
+const router = useRouter()
+const views: View[] = ['overview', 'users', 'keys', 'channels', 'logs', 'account', 'usage', 'ledger', 'pricing', 'audit']
+const view = ref<View>(props.activeView ?? (views.includes(route.params.view as View) ? route.params.view as View : 'overview'))
+const authenticated = ref(false)
 const mode = ref<'admin' | 'user'>('user')
 const error = ref('')
 const busy = ref(false)
@@ -35,9 +39,10 @@ const sessionNav = [['account', '我的账户', WalletCards]] as const
 const adminExtraNav = [['pricing', '模型定价', Tags, 'pricing.read'], ['audit', '操作审计', ReceiptText, 'audit.read']] as const
 const permissions = ['users.read', 'users.manage', 'keys.manage', 'channels.read', 'channels.manage', 'logs.read', 'pricing.read', 'pricing.manage', 'audit.read', 'wallets.manage', 'routes.manage', 'quotas.manage', 'system.manage']
 const pricingForm = reactive({ model: '', input_per_million: 0, cached_input_per_million: 0, output_per_million: 0, multiplier: 1 })
-const authPage = ref(window.location.pathname === '/auth')
 const loginMode = ref<'token' | 'login' | 'register'>('token')
 const accountForm = reactive({ name: '', email: '', password: '' })
+const isLanding = computed(() => route.path === '/')
+const isAuthPage = computed(() => route.path === '/auth')
 const activeChannels = computed(() => channels.value.filter((channel) => channel.enabled).length)
 const successRate = computed(() => logs.value.length ? Math.round(logs.value.filter((log) => log.status_code < 400).length / logs.value.length * 100) : 100)
 const totalTokens = computed(() => logs.value.reduce((sum, log) => sum + (log.total_tokens ?? 0), 0))
@@ -64,8 +69,8 @@ async function load() {
     await Promise.all(requests)
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '加载失败' } finally { busy.value = false }
 }
-async function accountSignIn(register: boolean) { await action(async () => { const result = await api<{ token: string }>(register ? '/auth/register' : '/auth/login', { method: 'POST', body: JSON.stringify(register ? accountForm : { email: accountForm.email, password: accountForm.password }) }); setToken(result.token); authenticated.value = true; view.value = 'account'; await load(); if (mode.value === 'admin') view.value = 'overview' }) }
-async function signOut() { try { await api('/auth/logout', { method: 'POST' }) } catch { /* Local session removal is sufficient when the server is unreachable. */ } clearToken(); authenticated.value = false; error.value = '' }
+async function accountSignIn(register: boolean) { await action(async () => { const result = await api<{ token: string }>(register ? '/auth/register' : '/auth/login', { method: 'POST', body: JSON.stringify(register ? accountForm : { email: accountForm.email, password: accountForm.password }) }); setToken(result.token); authenticated.value = true; await load(); await router.replace(`/console/${mode.value === 'admin' ? 'overview' : 'account'}`) }) }
+async function signOut() { try { await api('/auth/logout', { method: 'POST' }) } catch { /* Local session removal is sufficient when the server is unreachable. */ } clearToken(); authenticated.value = false; error.value = ''; await router.replace('/') }
 async function createKey() { await action(async () => { const response = await api<{ key: string }>('/admin/keys', { method: 'POST', body: JSON.stringify({ ...keyForm, expires_at: keyForm.expires_at ? new Date(keyForm.expires_at).toISOString() : '' }) }); createdKey.value = response.key; showKey.value = false; Object.assign(keyForm, { user_id: '', name: '', expires_at: '' }); await load() }) }
 async function createChannel() { await action(async () => { await api('/admin/channels', { method: 'POST', body: JSON.stringify({ ...channelForm, models: channelForm.models.split(',').map((value) => value.trim()).filter(Boolean) }) }); showChannel.value = false; Object.assign(channelForm, { name: '', base_url: 'https://api.openai.com', api_key: '', models: '', priority: 100 }); await load() }) }
 async function toggleChannel(channel: Channel) { await action(async () => { await api(`/admin/channels/${channel.id}/status`, { method: 'POST', body: JSON.stringify({ enabled: !channel.enabled }) }); await load() }) }
@@ -75,21 +80,32 @@ async function copyKey() { await navigator.clipboard.writeText(createdKey.value)
 async function savePricing() { await action(async () => { await api('/admin/pricing', { method: 'POST', body: JSON.stringify(pricingForm) }); Object.assign(pricingForm, { model: '', input_per_million: 0, cached_input_per_million: 0, output_per_million: 0, multiplier: 1 }); await load() }) }
 function manageUser(user: User) { selectedUser.value = user; selectedPermissions.value = [...user.permissions] }
 async function saveUserAccess() { if (!selectedUser.value) return; await action(async () => { await api(`/admin/users/${selectedUser.value?.id}/role`, { method: 'POST', body: JSON.stringify({ role: selectedUser.value?.role }) }); await api(`/admin/users/${selectedUser.value?.id}/permissions`, { method: 'PUT', body: JSON.stringify({ permissions: selectedPermissions.value }) }); selectedUser.value = null; await load() }) }
-function openAuth() { window.history.pushState({}, '', '/auth'); authPage.value = true }
-function closeAuth() { window.history.pushState({}, '', '/'); authPage.value = false; error.value = '' }
-function syncPage() { authPage.value = window.location.pathname === '/auth' }
-onMounted(() => { window.addEventListener('popstate', syncPage); if (authenticated.value) load() })
-onUnmounted(() => window.removeEventListener('popstate', syncPage))
+function openAuth() { router.push('/auth') }
+function openConsoleOrAuth() { router.push(authenticated.value ? '/console/overview' : '/auth') }
+function closeAuth() { router.push('/') }
+function openConsole(nextView: string) { if (views.includes(nextView as View)) router.push(`/console/${nextView}`) }
+watch(() => props.activeView, (value) => { if (value) view.value = value })
+watch(() => route.params.view, (value) => { if (!props.activeView && views.includes(value as View)) view.value = value as View })
+onMounted(async () => {
+	 authenticated.value = Boolean(getToken())
+  if (!authenticated.value) return
+  await load()
+  if (route.meta.requiresAuth && error.value) {
+    clearToken()
+    authenticated.value = false
+    await router.replace('/auth')
+  }
+})
 </script>
 
 <template>
-  <main v-if="!authenticated && !authPage" class="landing-shell">
+  <main v-if="isLanding" class="landing-shell">
     <nav class="landing-nav">
       <a class="landing-logo" href="/"><span class="brand-mark small"><Bot :size="19" /></span><span>Xinghai</span><i>Router</i></a>
-      <div class="landing-links"><a href="#features">能力</a><a href="#quickstart">快速开始</a><button class="button ghost" @click="openAuth">进入控制台 <ChevronRight :size="15" /></button></div>
+      <div class="landing-links"><a href="#features">能力</a><a href="#quickstart">快速开始</a><button class="button ghost" @click="openConsoleOrAuth">进入控制台 <ChevronRight :size="15" /></button></div>
     </nav>
     <section class="hero-section">
-      <div class="hero-copy"><p class="eyebrow">OPENAI-COMPATIBLE MODEL GATEWAY</p><h1>让每一次模型请求，<em>走向正确的地方。</em></h1><p class="hero-description">Xinghai Router 是一个轻量、可观测的模型流量网关。统一 API、智能路由上游渠道，并把用量与成本留在你的控制台。</p><div class="hero-actions"><button class="button primary hero-button" @click="openAuth">打开控制台 <ChevronRight :size="16" /></button><a class="text-link" href="#quickstart">查看请求示例 <span>↓</span></a></div></div>
+      <div class="hero-copy"><p class="eyebrow">OPENAI-COMPATIBLE MODEL GATEWAY</p><h1>让每一次模型请求，<em>走向正确的地方。</em></h1><p class="hero-description">Xinghai Router 是一个轻量、可观测的模型流量网关。统一 API、智能路由上游渠道，并把用量与成本留在你的控制台。</p><div class="hero-actions"><button class="button primary hero-button" @click="openConsoleOrAuth">打开控制台 <ChevronRight :size="16" /></button><a class="text-link" href="#quickstart">查看请求示例 <span>↓</span></a></div></div>
       <div class="hero-visual"><div class="visual-glow"></div><div class="route-card"><div class="route-card-top"><span><i class="live-dot"></i>ROUTER ONLINE</span><code>POST /v1/chat/completions</code></div><div class="route-model"><Bot :size="18" /><strong>gpt-4o</strong><span>智能路由中</span></div><div class="route-line"><span class="route-node active"></span><div><b>OpenAI 主线路</b><small>优先级 P10 · 42ms</small></div><span class="route-check">✓</span></div><div class="route-line muted-route"><span class="route-node"></span><div><b>备用渠道</b><small>等待流量切换</small></div></div><div class="route-footer"><span>成功率</span><strong>99.98%</strong><span class="route-divider"></span><span>平均延迟</span><strong>186ms</strong></div></div></div>
     </section>
     <section id="features" class="feature-section"><div class="section-intro"><p class="eyebrow">BUILT FOR CONTROL</p><h2>把复杂的上游，<br><em>变成一个简单的入口。</em></h2></div><div class="feature-grid"><article><span class="feature-number">01</span><RadioTower :size="21" /><h3>智能路由</h3><p>按模型、优先级和渠道状态分发请求，在上游波动时自动切换。</p></article><article><span class="feature-number">02</span><Activity :size="21" /><h3>全链路可观测</h3><p>请求日志、状态码、耗时和 Token 用量，都在一个清晰的控制台里。</p></article><article><span class="feature-number">03</span><WalletCards :size="21" /><h3>用量与成本</h3><p>为模型设置价格规则，记录每次调用费用，让团队用得明白。</p></article></div></section>
@@ -97,14 +113,14 @@ onUnmounted(() => window.removeEventListener('popstate', syncPage))
     <footer class="landing-footer"><span>© 2026 Xinghai Router</span><span>轻量、透明、为模型流量而生。</span></footer>
   </main>
 
-  <main v-else-if="!authenticated" class="login-shell">
+  <main v-else-if="isAuthPage" class="login-shell">
     <section class="login-card"><button class="login-close" aria-label="返回首页" @click="closeAuth">×</button><div class="brand-mark"><Bot :size="29" /></div><p class="eyebrow">XINGHAI ROUTER</p><h1>控制模型流量。</h1><div class="auth-tabs"><button :class="{ active: loginMode === 'login' }" @click="loginMode = 'login'">账户登录</button><button :class="{ active: loginMode === 'register' }" @click="loginMode = 'register'">创建账户</button></div><form @submit.prevent="accountSignIn(loginMode === 'register')"><label v-if="loginMode === 'register'">姓名<input v-model="accountForm.name" autocomplete="name" required maxlength="100" placeholder="例如：李雷" /></label><label>邮箱<input v-model="accountForm.email" type="email" autocomplete="email" required placeholder="name@example.com" /></label><label>密码<input v-model="accountForm.password" type="password" :autocomplete="loginMode === 'register' ? 'new-password' : 'current-password'" required minlength="8" placeholder="至少 8 个字符" /></label><button class="button primary full" :disabled="busy">{{ loginMode === 'register' ? '创建并进入控制台' : '登录控制台' }} <ChevronRight :size="16" /></button></form><p v-if="error" class="error"><CircleAlert :size="16" />{{ error }}</p></section>
   </main>
 
   <main v-else class="app-shell">
     <aside class="sidebar">
        <div class="logo"><span class="brand-mark small"><Bot :size="19" /></span><span>Xinghai</span><i>Router</i></div>
-       <nav><template v-if="mode === 'admin'"><button v-for="[id, label, Icon] in adminNav" :key="id" :class="{ active: view === id }" @click="view = id"><component :is="Icon" :size="18" />{{ label }}</button></template><template v-else><button v-for="[id, label, Icon] in sessionNav" :key="id" :class="{ active: view === id }" @click="view = id"><component :is="Icon" :size="18" />{{ label }}</button></template></nav>
+       <nav><template v-if="mode === 'admin'"><button v-for="[id, label, Icon] in adminNav" :key="id" :class="{ active: view === id }" @click="openConsole(id)"><component :is="Icon" :size="18" />{{ label }}</button></template><template v-else><button v-for="[id, label, Icon] in sessionNav" :key="id" :class="{ active: view === id }" @click="openConsole(id)"><component :is="Icon" :size="18" />{{ label }}</button></template></nav>
       <div class="sidebar-footer"><span><span class="live-dot"></span>网关在线</span><button @click="signOut"><LogOut :size="16" />退出</button></div>
     </aside>
     <section class="content">
@@ -113,7 +129,7 @@ onUnmounted(() => window.removeEventListener('popstate', syncPage))
 
       <template v-if="view === 'overview'">
         <div class="metrics"><article><span>活跃渠道</span><strong>{{ activeChannels }}<em>/{{ channels.length }}</em></strong><p><RadioTower :size="15" />可用于路由</p></article><article><span>近 100 请求</span><strong>{{ logs.length }}</strong><p><Activity :size="15" />最近记录</p></article><article><span>成功率</span><strong>{{ successRate }}<em>%</em></strong><p><Check :size="15" />HTTP 2xx / 3xx</p></article><article><span>计量 Token</span><strong>{{ totalTokens.toLocaleString() }}</strong><p><KeyRound :size="15" />非流式请求</p></article></div>
-        <div class="grid-two"><section class="panel"><div class="panel-title"><div><h2>渠道状态</h2><p>按优先级选取首个可用渠道</p></div><button class="text-button" @click="view = 'channels'">管理</button></div><div v-if="channels.length" class="channel-list"><div v-for="channel in channels" :key="channel.id"><span :class="['status-dot', { off: !channel.enabled }]"></span><div><b>{{ channel.name }}</b><small>{{ channel.models.join(', ') }}</small></div><span class="priority">P{{ channel.priority }}</span></div></div><Empty v-else text="尚未配置上游渠道" /></section><section class="panel"><div class="panel-title"><div><h2>最近请求</h2><p>最近 100 条网关请求</p></div><button class="text-button" @click="view = 'logs'">查看全部</button></div><div v-if="logs.length" class="compact-list"><div v-for="log in logs.slice(0, 5)" :key="log.request_id"><code>{{ log.model }}</code><span>{{ log.duration_ms }} ms</span><b :class="log.status_code < 400 ? 'success' : 'danger'">{{ log.status_code }}</b></div></div><Empty v-else text="等待第一条模型请求" /></section></div>
+        <div class="grid-two"><section class="panel"><div class="panel-title"><div><h2>渠道状态</h2><p>按优先级选取首个可用渠道</p></div><button class="text-button" @click="openConsole('channels')">管理</button></div><div v-if="channels.length" class="channel-list"><div v-for="channel in channels" :key="channel.id"><span :class="['status-dot', { off: !channel.enabled }]"></span><div><b>{{ channel.name }}</b><small>{{ channel.models.join(', ') }}</small></div><span class="priority">P{{ channel.priority }}</span></div></div><Empty v-else text="尚未配置上游渠道" /></section><section class="panel"><div class="panel-title"><div><h2>最近请求</h2><p>最近 100 条网关请求</p></div><button class="text-button" @click="openConsole('logs')">查看全部</button></div><div v-if="logs.length" class="compact-list"><div v-for="log in logs.slice(0, 5)" :key="log.request_id"><code>{{ log.model }}</code><span>{{ log.duration_ms }} ms</span><b :class="log.status_code < 400 ? 'success' : 'danger'">{{ log.status_code }}</b></div></div><Empty v-else text="等待第一条模型请求" /></section></div>
       </template>
 
        <template v-if="view === 'users'"><section class="toolbar"><div><h2>用户与权限</h2><p>提升账户为管理员，或为运营用户授予具体权限。</p></div></section><section class="panel table-panel"><table><thead><tr><th>用户</th><th>角色</th><th>权限</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="user in users" :key="user.id"><td><b>{{ user.name }}</b><small>{{ user.email }}</small></td><td><span class="pill">{{ user.role }}</span></td><td>{{ user.role === 'admin' ? '全部权限' : user.permissions.join(', ') || '无' }}</td><td><span :class="['state', user.enabled ? 'good' : 'bad']">{{ user.enabled ? '已启用' : '已停用' }}</span></td><td><button v-if="can('system.manage')" class="text-button" @click="manageUser(user)">管理权限</button></td></tr></tbody></table><Empty v-if="!users.length" text="还没有用户" /></section></template>
