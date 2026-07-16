@@ -243,6 +243,21 @@ func accountFromContext(r *http.Request) accountContext {
 	return r.Context().Value(accountContextKey{}).(accountContext)
 }
 
+func (s *Service) optionalAccount(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		account := accountContext{}
+		token := bearer(r)
+		if token != "" {
+			err := s.db.QueryRow(r.Context(), `select s.user_id,u.role from user_sessions s join users u on u.id=s.user_id where s.token_hash=$1 and s.expires_at>now() and u.enabled`, hashSecret(token)).Scan(&account.userID, &account.role)
+			if err != nil {
+				writeError(w, http.StatusUnauthorized, "unauthorized", "invalid or expired session")
+				return
+			}
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), accountContextKey{}, account)))
+	})
+}
+
 func (s *Service) account(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := bearer(r)

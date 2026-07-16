@@ -305,7 +305,7 @@ func (s *Service) modelCatalog(w http.ResponseWriter, r *http.Request) {
 			from available a
 			left join channel_groups cg on cg.channel_id=a.channel_id
 			left join groups g on g.id=cg.group_id
-			where g.id is null or exists(select 1 from user_groups ug where ug.user_id=$1 and ug.group_id=g.id)
+			where g.id is null or exists(select 1 from user_groups ug where ug.user_id=nullif($1, '')::uuid and ug.group_id=g.id)
 		)
 		select c.model,c.group_id,c.group_name,c.group_multiplier,
 			p.id,p.input_per_million,p.cached_input_per_million,p.output_per_million,p.multiplier

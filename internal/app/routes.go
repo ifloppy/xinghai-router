@@ -20,7 +20,7 @@ func (s *Service) routes() http.Handler {
 	})
 	mux.HandleFunc("POST /auth/register", s.register)
 	mux.HandleFunc("POST /auth/login", s.login)
-	mux.HandleFunc("GET /model-catalog", s.modelCatalog)
+	mux.Handle("GET /model-catalog", s.optionalAccount(s.modelCatalog))
 	mux.HandleFunc("GET /rankings", s.rankings)
 	mux.Handle("POST /auth/logout", s.account(s.logout))
 	mux.Handle("GET /account/me", s.account(s.accountMe))
