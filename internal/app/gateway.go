@@ -12,7 +12,7 @@ import (
 
 type channel struct {
 	id, baseURL, apiKey, upstreamModel, provider string
-	priority, weight                   int
+	priority, weight                             int
 }
 
 type reservation struct{ amount float64 }

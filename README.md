@@ -1,12 +1,12 @@
 # Xinghai Router
 
-阶段 1、2 的 OpenAI 兼容 LLM 网关与运营后台。管理员可管理用户、密钥、渠道、路由和模型价格；用户通过一个 API Key 调用模型，并获取自己的用量、余额和账本。
+支持 OpenAI 与 Anthropic 格式的 LLM 网关与运营后台。管理员可管理用户、密钥、渠道、路由和模型价格；用户通过一个 API Key 调用模型，并获取自己的用量、余额和账本。
 
 ## Included
 
 - PostgreSQL migrations for users、哈希 API Key、加密渠道凭据、不可变钱包账本、用量、路由和审计记录。
 - 基于用户会话、管理员角色和细粒度权限保护的管理 API。
-- OpenAI-compatible `GET /v1/models` and `POST /v1/chat/completions` endpoints.
+- OpenAI-compatible `GET /v1/models`、`POST /v1/chat/completions`，以及 Anthropic-compatible `POST /v1/messages`。
 - 透明 SSE、上游超时、每 Key 每分钟基础限流、请求 ID、模型别名和同优先级权重路由。
 - 对可重试上游错误自动切换备用渠道；连续失败三次的渠道冷却一分钟。
 - 请求日志关联用户、Key、模型和最终渠道；非流式请求记录 token、按定价结算，并在上游调用前预留余额以避免并发透支。
@@ -33,7 +33,7 @@ npm run dev
 
 Open `http://localhost:5173/auth` and create an account or sign in with email and password. The first registered account becomes an administrator; administrators can promote users or grant individual permissions. Browser sessions are retained only in session storage. Nuxt proxies browser requests from `/api/*` to `http://127.0.0.1:8080/*`, so this development setup does not require a CORS policy. `npm run generate` emits prerendered HTML for the public home and authentication pages; deploy the Nuxt `.output` directory for the full application.
 
-The service performs migrations automatically at startup. `base_url` for a channel must be an HTTPS origin or path prefix without `/v1`; for example, `https://api.openai.com`. Provider secrets are encrypted in the database using `ENCRYPTION_KEY`, so keep this value stable and securely backed up.
+The service performs migrations automatically at startup. `base_url` for a channel must be an HTTPS origin or path prefix without `/v1`; for example, `https://api.openai.com`. Loopback HTTP URLs are also accepted for local services such as Ollama, for example `http://127.0.0.1:11434`. Provider secrets are encrypted in the database using `ENCRYPTION_KEY`, so keep this value stable and securely backed up.
 
 ## Administration API
 
@@ -81,6 +81,22 @@ curl -X POST http://localhost:8080/admin/channels \
   -d '{"name":"openai","base_url":"https://api.openai.com","api_key":"PROVIDER_KEY","models":["gpt-4o-mini"],"priority":100}'
 ```
 
+创建渠道时可选 `provider`：`openai`、`ollama`、`kimi`、`opencode_go` 或 `anthropic`。Ollama、Kimi 和 OpenCode Go 使用各自的 OpenAI-compatible 接口；Anthropic 渠道会转换为 Messages API。`base_url` 不要包含末尾的 `/v1`：
+
+```sh
+# 本机 Ollama，API Key 会被 Ollama 忽略
+curl -X POST http://localhost:8080/admin/channels \
+  -H "Authorization: Bearer $SESSION_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"ollama","provider":"ollama","base_url":"http://127.0.0.1:11434","api_key":"ollama","models":["qwen3-coder:30b"],"priority":100}'
+
+# Kimi / Moonshot
+curl -X POST http://localhost:8080/admin/channels \
+  -H "Authorization: Bearer $SESSION_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"kimi","provider":"kimi","base_url":"https://api.moonshot.cn","api_key":"MOONSHOT_API_KEY","models":["kimi-k2.6"],"priority":100}'
+```
+
+OpenCode Go 使用相同方式创建渠道并设置 `"provider":"opencode_go"`，填写其 OpenAI-compatible API origin、订阅 API Key 和可用模型 ID。Anthropic 上游使用 `"provider":"anthropic"`、`https://api.anthropic.com` 和 Anthropic API Key。
+
 List management data with `GET /admin/users`, `GET /admin/keys`, `GET /admin/channels`, `GET /admin/request-logs`, `GET /admin/pricing`, and `GET /admin/audit-logs`. Revoke a user key with `POST /admin/keys/{id}/revoke`; enable or disable a channel with `POST /admin/channels/{id}/status` and `{"enabled":true}` or `{"enabled":false}`.
 
 Set a model price (currency units per million tokens), then top up or adjust a user's balance:
@@ -118,6 +134,32 @@ curl -N http://localhost:8080/v1/chat/completions \
   -H "Authorization: Bearer $XINGHAI_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}],"stream":true}'
+```
+
+Anthropic 客户端（包括将 OpenCode 的 Anthropic provider 指向本服务）可使用 `x-api-key` 调用 `/v1/messages`。请求、非流式响应、SSE 和工具调用会在 Anthropic Messages 与上游 OpenAI Chat Completions 格式之间转换：
+
+```sh
+curl -N http://localhost:8080/v1/messages \
+  -H "x-api-key: $XINGHAI_API_KEY" \
+  -H 'anthropic-version: 2023-06-01' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"kimi-k2.6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}],"stream":true}'
+```
+
+OpenCode 配置示例：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "xinghai": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "Xinghai Router",
+      "options": { "baseURL": "http://localhost:8080/v1", "apiKey": "sk-xh-your-key" },
+      "models": { "kimi-k2.6": { "name": "Kimi K2.6" } }
+    }
+  }
+}
 ```
 
 The router selects an enabled channel advertising the requested model. It tries the lowest numeric priority first, distributes equal-priority traffic by weight, and retries a different eligible channel for connection errors, `408`, `425`, `429`, and `5xx` responses.

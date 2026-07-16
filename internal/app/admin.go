@@ -3,11 +3,65 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
 )
+
+func (s *Service) fetchChannelModels(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		BaseURL string `json:"base_url"`
+		APIKey  string `json:"api_key"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.BaseURL) == "" || strings.TrimSpace(in.APIKey) == "" {
+		writeError(w, 400, "invalid_request", "base_url and api_key are required")
+		return
+	}
+	baseURL, err := url.Parse(strings.TrimRight(strings.TrimSpace(in.BaseURL), "/"))
+	if err != nil || baseURL.Host == "" || (baseURL.Scheme != "https" && !(baseURL.Scheme == "http" && isLoopbackHost(baseURL.Hostname()))) {
+		writeError(w, 400, "invalid_request", "base_url must use HTTPS, except for loopback HTTP services")
+		return
+	}
+	baseURL.Path = strings.TrimRight(baseURL.Path, "/") + "/v1/models"
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, baseURL.String(), nil)
+	if err != nil {
+		writeError(w, 400, "invalid_request", "invalid base_url")
+		return
+	}
+	request.Header.Set("Authorization", "Bearer "+in.APIKey)
+	response, err := s.httpClient.Do(request)
+	if err != nil {
+		writeError(w, 502, "upstream_error", "could not fetch models")
+		return
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	if err != nil || response.StatusCode < 200 || response.StatusCode >= 300 {
+		writeError(w, 502, "upstream_error", "upstream models request failed")
+		return
+	}
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(body, &result) != nil {
+		writeError(w, 502, "upstream_error", "invalid models response")
+		return
+	}
+	models := make([]string, 0, len(result.Data))
+	seen := map[string]bool{}
+	for _, item := range result.Data {
+		model := strings.TrimSpace(item.ID)
+		if model != "" && !seen[model] {
+			seen[model] = true
+			models = append(models, model)
+		}
+	}
+	writeJSON(w, 200, map[string]any{"models": models})
+}
 
 func (s *Service) listPricing(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.Query(r.Context(), `select id,model,input_per_million,cached_input_per_million,output_per_million,multiplier,enabled,updated_at from pricing_rules order by model`)
@@ -561,12 +615,12 @@ func (s *Service) createChannel(w http.ResponseWriter, r *http.Request) {
 		Groups   []string `json:"groups"`
 		Provider string   `json:"provider"`
 	}
-	if in.Provider == "" {
-		in.Provider = "openai"
-	}
 	if decode(r, &in) != nil || in.Name == "" || in.APIKey == "" || len(in.Models) == 0 {
 		writeError(w, 400, "invalid_request", "name, api_key, and models are required")
 		return
+	}
+	if in.Provider == "" {
+		in.Provider = "openai"
 	}
 	if !map[string]bool{"openai": true, "ollama": true, "kimi": true, "opencode_go": true, "anthropic": true}[in.Provider] {
 		writeError(w, 400, "invalid_request", "unsupported provider")
