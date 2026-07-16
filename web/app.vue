@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 const route = useRoute()
 const { locale, t } = useI18n()
+const { initializeTheme } = useTheme()
 const consoleTitles: Record<string, string> = {
   overview: 'overview', users: 'users', groups: 'groups', keys: 'keys', channels: 'channels', logs: 'logs', account: 'account', profile: 'profile', wallet: 'wallet', usage: 'usage', 'usage-overview': 'usageOverview', ledger: 'ledger', pricing: 'pricing', audit: 'audit',
 }
@@ -23,6 +24,7 @@ const title = computed(() => {
 })
 
 useHead({ title })
+onMounted(initializeTheme)
 </script>
 
 <template>

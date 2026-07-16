@@ -1,24 +1,15 @@
 <script setup lang="ts">
-import { Bot, ChevronLeft, Moon, Sun } from 'lucide-vue-next'
+import { Bot, ChevronLeft } from 'lucide-vue-next'
 
 const props = defineProps<{ kind: 'terms' | 'privacy' }>()
 const { locale, t, toggleLocale, initializeLocale } = useI18n()
-const theme = ref<'light' | 'dark'>('light')
 
 const isTerms = computed(() => props.kind === 'terms')
 const title = computed(() => isTerms.value ? t('termsTitle') : t('privacyTitle'))
 const updatedAt = '2026-07-16'
 
-function setTheme(next: 'light' | 'dark') {
-  theme.value = next
-  document.documentElement.dataset.theme = next
-  localStorage.setItem('xinghai-router-theme', next)
-}
-
 onMounted(() => {
   initializeLocale()
-  const saved = localStorage.getItem('xinghai-router-theme')
-  setTheme(saved === 'dark' || saved === 'light' ? saved : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 })
 </script>
 
@@ -27,7 +18,7 @@ onMounted(() => {
     <nav class="legal-nav">
       <a class="landing-logo" href="/"><span class="brand-mark small"><Bot :size="19" /></span><span>Xinghai Router</span></a>
       <div class="legal-nav-actions">
-        <button class="theme-toggle" :aria-label="theme === 'dark' ? t('lightMode') : t('darkMode')" @click="setTheme(theme === 'dark' ? 'light' : 'dark')"><Sun v-if="theme === 'dark'" :size="16" /><Moon v-else :size="16" /></button>
+        <ThemeCustomizer :locale="locale" />
         <button class="language-toggle" :aria-label="t('switchLanguage')" @click="toggleLocale">{{ locale === 'zh-CN' ? t('english') : t('chinese') }}</button>
         <a class="button ghost" href="/"><ChevronLeft :size="15" />{{ t('backHome') }}</a>
       </div>

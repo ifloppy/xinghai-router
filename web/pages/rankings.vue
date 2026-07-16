@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowLeft, ArrowUp, Bot, Moon, RefreshCw, Sun, Trophy } from 'lucide-vue-next'
+import { ArrowDown, ArrowLeft, ArrowUp, Bot, RefreshCw, Trophy } from 'lucide-vue-next'
 import { onMounted, ref } from 'vue'
 import type { Rankings, SiteSettings } from '~/src/api'
 
@@ -9,7 +9,6 @@ const rankings = ref<Rankings | null>(null)
 const siteSettings = ref<SiteSettings>({ name: 'Xinghai Router', icon_url: '', auto_disable_failed_channels: false })
 const loading = ref(true)
 const error = ref('')
-const theme = ref<'light' | 'dark'>('light')
 const { locale, t, setLocale, initializeLocale } = useI18n()
 const periods: { value: Period; label: string }[] = [{ value: 'today', label: t('today') }, { value: 'week', label: t('thisWeek') }, { value: 'month', label: t('thisMonth') }, { value: 'year', label: t('thisYear') }]
 
@@ -42,12 +41,6 @@ async function loadSiteSettings() {
   }
 }
 
-function setTheme(next: 'light' | 'dark') {
-  theme.value = next
-  document.documentElement.dataset.theme = next
-  localStorage.setItem('xinghai-router-theme', next)
-}
-
 function selectPeriod(next: Period) {
   history.replaceState({}, '', `/rankings?period=${next}`)
   load(next)
@@ -55,8 +48,6 @@ function selectPeriod(next: Period) {
 
 onMounted(() => {
   initializeLocale()
-  const saved = localStorage.getItem('xinghai-router-theme')
-  setTheme(saved === 'dark' || saved === 'light' ? saved : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
   const queryPeriod = new URLSearchParams(location.search).get('period') as Period | null
   if (queryPeriod && periods.some((item) => item.value === queryPeriod)) period.value = queryPeriod
   loadSiteSettings()
@@ -68,7 +59,7 @@ onMounted(() => {
   <main class="rankings-page">
      <nav class="rankings-nav">
        <a class="landing-logo" href="/"><span class="brand-mark small"><Bot :size="19" /></span><span>{{ siteSettings.name }}</span></a>
-       <div><a class="back-link" href="/"><ArrowLeft :size="14" />{{ t('backHome') }}</a><button class="theme-toggle" :aria-label="theme === 'dark' ? t('lightMode') : t('darkMode')" @click="setTheme(theme === 'dark' ? 'light' : 'dark')"><Sun v-if="theme === 'dark'" :size="16" /><Moon v-else :size="16" /></button><select v-model="locale" class="language-select" :aria-label="t('switchLanguage')"><option value="zh-CN">{{ t('chinese') }}</option><option value="en-US">{{ t('english') }}</option></select><a class="button primary" href="/auth">{{ t('console') }}</a></div>
+       <div><a class="back-link" href="/"><ArrowLeft :size="14" />{{ t('backHome') }}</a><ThemeCustomizer :locale="locale" /><select v-model="locale" class="language-select" :aria-label="t('switchLanguage')"><option value="zh-CN">{{ t('chinese') }}</option><option value="en-US">{{ t('english') }}</option></select><a class="button primary" href="/auth">{{ t('console') }}</a></div>
     </nav>
 
     <section class="rankings-shell">
