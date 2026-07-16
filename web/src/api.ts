@@ -1,4 +1,4 @@
-export interface User { id: string; email: string; name: string; role: string; enabled: boolean; permissions: string[]; groups: string[]; created_at: string }
+export interface User { id: string; email: string; name: string; role: string; enabled: boolean; balance: number; reserved: number; permissions: string[]; groups: string[]; created_at: string }
 export interface ApiKey { id: string; user_id: string; name: string; key_prefix: string; group_id: string; group_name: string; expires_at: string | null; revoked_at: string | null; last_used_at: string | null; created_at: string }
 export interface Channel { id: string; name: string; base_url: string; provider: 'openai' | 'ollama' | 'kimi' | 'opencode_go' | 'anthropic'; models: string[]; enabled: boolean; priority: number; groups: string[]; created_at: string }
 export interface Group { id: string; name: string; multiplier: number; created_at: string }

@@ -328,6 +328,26 @@ input:hover, select:hover { border-color: #a1a1aa; }
 input:focus, select:focus { border-color: #52525b; box-shadow: 0 0 0 3px rgb(82 82 91 / 10%); }
 .modal-backdrop { padding: 24px; background: rgb(24 24 27 / 48%); backdrop-filter: blur(3px); }
 .modal { padding: 24px; border-color: #e4e4e7; border-radius: 12px; box-shadow: 0 24px 70px rgb(24 24 27 / 18%); }
+
+.group-page { display: grid; gap: 14px; }
+.group-create-form { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(180px, .8fr) 150px auto; gap: 16px; align-items: end; padding: 18px; }
+.group-create-form h3 { margin: 0; color: #27272a; font-size: 14px; }
+.group-create-form p { margin: 5px 0 0; color: #71717a; font-size: 11px; line-height: 1.5; }
+.group-create-form label { margin: 0; }
+.group-import-form { display: grid; grid-template-columns: 230px minmax(0, 1fr) 130px; gap: 16px; align-items: end; padding: 18px; }
+.group-import-form h3 { margin: 0; color: #27272a; font-size: 14px; }
+.group-import-form p { margin: 5px 0 0; color: #71717a; font-size: 11px; line-height: 1.5; }
+.group-import-form textarea { width: 100%; min-height: 104px; padding: 10px; resize: vertical; border: 1px solid #d4d4d8; border-radius: 6px; color: #27272a; background: #fff; font: 11px/1.6 "DM Mono", monospace; outline: none; }
+.group-import-form textarea:focus { border-color: #52525b; box-shadow: 0 0 0 3px rgb(82 82 91 / 10%); }
+.group-rate-form { display: flex; align-items: center; gap: 7px; width: 210px; }
+.group-rate-form input { min-width: 0; }
+.group-rate-form span { color: #71717a; font-size: 11px; }
+:root[data-theme="dark"] .group-create-form h3 { color: #e4e4e7; }
+
+@media (max-width: 900px) { .group-create-form { grid-template-columns: 1fr 1fr; }.group-create-form > div { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .group-create-form { grid-template-columns: 1fr; }.group-create-form > div { grid-column: auto; }.group-create-form .button { width: 100%; } }
+@media (max-width: 900px) { .group-import-form { grid-template-columns: 1fr 140px; }.group-import-form > div { grid-column: 1 / -1; }.group-import-form textarea { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .group-import-form { grid-template-columns: 1fr; }.group-import-form .button { width: 100%; } }
 .modal-title { padding-bottom: 15px; border-bottom: 1px solid #f0f0f2; }.modal-title h2 { font-size: 16px; }.modal-title button { width: 30px; height: 30px; border-radius: 6px; line-height: 1; }.modal-title button:hover { background: #f4f4f5; }
 .banner { margin: 0 0 16px; border-color: #fecaca; background: #fff7f7; }
 

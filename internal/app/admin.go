@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"sort"
 	"strings"
@@ -135,7 +137,7 @@ func (s *Service) audit(r *http.Request, action, entityType, entityID string, de
 }
 
 func (s *Service) listUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `select u.id,u.email,u.name,u.role,u.enabled,u.created_at,coalesce(array_agg(p.permission) filter (where p.permission is not null), '{}'),coalesce((select array_agg(ug.group_id order by ug.group_id) from user_groups ug where ug.user_id=u.id), '{}') from users u left join user_permissions p on p.user_id=u.id group by u.id order by u.created_at desc`)
+	rows, err := s.db.Query(r.Context(), `select u.id,u.email,u.name,u.role,u.enabled,u.created_at,coalesce(w.balance,0),coalesce(w.reserved,0),coalesce(array_agg(p.permission) filter (where p.permission is not null), '{}'),coalesce((select array_agg(ug.group_id order by ug.group_id) from user_groups ug where ug.user_id=u.id), '{}') from users u left join user_permissions p on p.user_id=u.id left join user_wallets w on w.user_id=u.id group by u.id,w.balance,w.reserved order by u.created_at desc`)
 	if err != nil {
 		writeError(w, 500, "internal_error", "query failed")
 		return
@@ -146,12 +148,150 @@ func (s *Service) listUsers(w http.ResponseWriter, r *http.Request) {
 		var id, email, name, role string
 		var enabled bool
 		var created any
+		var balance, reserved any
 		var permissions []string
 		var groups []string
-		rows.Scan(&id, &email, &name, &role, &enabled, &created, &permissions, &groups)
-		out = append(out, map[string]any{"id": id, "email": email, "name": name, "role": role, "enabled": enabled, "permissions": permissions, "groups": groups, "created_at": created})
+		rows.Scan(&id, &email, &name, &role, &enabled, &created, &balance, &reserved, &permissions, &groups)
+		out = append(out, map[string]any{"id": id, "email": email, "name": name, "role": role, "enabled": enabled, "balance": balance, "reserved": reserved, "permissions": permissions, "groups": groups, "created_at": created})
 	}
 	writeJSON(w, 200, map[string]any{"data": out})
+}
+
+func (s *Service) updateUser(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Email       string   `json:"email"`
+		Name        string   `json:"name"`
+		Password    string   `json:"password"`
+		Role        string   `json:"role"`
+		Enabled     bool     `json:"enabled"`
+		Permissions []string `json:"permissions"`
+		Groups      []string `json:"groups"`
+		Balance     *float64 `json:"balance"`
+		Note        string   `json:"note"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.Email) == "" || (in.Role != "user" && in.Role != "operator" && in.Role != "admin") {
+		writeError(w, 400, "invalid_request", "name, email, and a valid role are required")
+		return
+	}
+	parsed, err := mail.ParseAddress(strings.TrimSpace(in.Email))
+	if err != nil || parsed.Address != strings.TrimSpace(in.Email) {
+		writeError(w, 400, "invalid_request", "email is invalid")
+		return
+	}
+	if in.Password != "" && len(in.Password) < 8 {
+		writeError(w, 400, "invalid_request", "password must be at least 8 characters")
+		return
+	}
+	for _, permission := range in.Permissions {
+		if !availablePermissions[permission] {
+			writeError(w, 400, "invalid_request", "invalid permissions")
+			return
+		}
+	}
+	if in.Balance != nil && (math.IsNaN(*in.Balance) || math.IsInf(*in.Balance, 0) || *in.Balance < 0) {
+		writeError(w, 400, "invalid_request", "balance must be a non-negative number")
+		return
+	}
+	actor := accountFromContext(r)
+	userID := r.PathValue("id")
+	if actor.userID == userID && (in.Role != "admin" || !in.Enabled) {
+		writeError(w, 400, "invalid_request", "cannot remove or disable your own administrator account")
+		return
+	}
+	passwordHash := ""
+	if in.Password != "" {
+		passwordHash, err = hashPassword(in.Password)
+		if err != nil {
+			writeError(w, 500, "internal_error", "could not secure password")
+			return
+		}
+	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		writeError(w, 500, "internal_error", "could not update user")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var oldBalance, reserved float64
+	if err = tx.QueryRow(r.Context(), `select coalesce(w.balance,0),coalesce(w.reserved,0) from users u left join user_wallets w on w.user_id=u.id where u.id=$1`, userID).Scan(&oldBalance, &reserved); err != nil {
+		writeError(w, 404, "not_found", "user not found")
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `insert into user_wallets(user_id) values($1) on conflict(user_id) do nothing`, userID); err != nil {
+		writeError(w, 500, "internal_error", "could not load wallet")
+		return
+	}
+	if err = tx.QueryRow(r.Context(), `select balance,reserved from user_wallets where user_id=$1 for update`, userID).Scan(&oldBalance, &reserved); err != nil {
+		writeError(w, 500, "internal_error", "could not lock wallet")
+		return
+	}
+	if in.Balance != nil && *in.Balance < reserved {
+		writeError(w, 400, "invalid_request", "balance cannot be lower than reserved amount")
+		return
+	}
+	if passwordHash != "" {
+		_, err = tx.Exec(r.Context(), `update users set email=$1,name=$2,role=$3,enabled=$4,password_hash=$5 where id=$6`, strings.ToLower(strings.TrimSpace(in.Email)), strings.TrimSpace(in.Name), in.Role, in.Enabled, passwordHash, userID)
+	} else {
+		_, err = tx.Exec(r.Context(), `update users set email=$1,name=$2,role=$3,enabled=$4 where id=$5`, strings.ToLower(strings.TrimSpace(in.Email)), strings.TrimSpace(in.Name), in.Role, in.Enabled, userID)
+	}
+	if err != nil {
+		writeError(w, 409, "conflict", "email already exists or user could not be updated")
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `insert into user_wallets(user_id,balance) values($1,coalesce($2,0)) on conflict(user_id) do update set balance=coalesce($2,user_wallets.balance),updated_at=now()`, userID, in.Balance); err != nil {
+		writeError(w, 500, "internal_error", "could not update balance")
+		return
+	}
+	if in.Balance != nil && *in.Balance != oldBalance {
+		id, _ := randomID()
+		note := strings.TrimSpace(in.Note)
+		if note == "" {
+			note = "管理员修改用户余额"
+		}
+		kind := "adjustment"
+		if *in.Balance > oldBalance {
+			kind = "topup"
+		}
+		if _, err = tx.Exec(r.Context(), `insert into wallet_ledger(id,user_id,amount,balance_after,kind,note) values($1,$2,$3,$4,$5,$6)`, id, userID, *in.Balance-oldBalance, *in.Balance, kind, note); err != nil {
+			writeError(w, 500, "internal_error", "could not record balance change")
+			return
+		}
+	}
+	if _, err = tx.Exec(r.Context(), `delete from user_permissions where user_id=$1`, userID); err != nil {
+		writeError(w, 500, "internal_error", "could not update permissions")
+		return
+	}
+	for _, permission := range in.Permissions {
+		if _, err = tx.Exec(r.Context(), `insert into user_permissions(user_id,permission) values($1,$2)`, userID, permission); err != nil {
+			writeError(w, 500, "internal_error", "could not update permissions")
+			return
+		}
+	}
+	if _, err = tx.Exec(r.Context(), `delete from user_groups where user_id=$1`, userID); err != nil {
+		writeError(w, 500, "internal_error", "could not update groups")
+		return
+	}
+	for _, group := range in.Groups {
+		var groupID string
+		if err = tx.QueryRow(r.Context(), `select id from groups where id::text=$1 or name=$1`, strings.TrimSpace(group)).Scan(&groupID); err != nil {
+			writeError(w, 400, "invalid_request", "unknown group")
+			return
+		}
+		if _, err = tx.Exec(r.Context(), `insert into user_groups(user_id,group_id) values($1,$2)`, userID, groupID); err != nil {
+			writeError(w, 500, "internal_error", "could not update groups")
+			return
+		}
+	}
+	if _, err = tx.Exec(r.Context(), `update api_keys set group_id=null where user_id=$1 and group_id is not null and not exists(select 1 from user_groups ug where ug.user_id=$1 and ug.group_id=api_keys.group_id)`, userID); err != nil {
+		writeError(w, 500, "internal_error", "could not update API key groups")
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, 500, "internal_error", "could not update user")
+		return
+	}
+	s.audit(r, "user.updated", "user", userID, map[string]any{"email": in.Email, "role": in.Role, "enabled": in.Enabled, "groups": in.Groups, "balance_changed": in.Balance != nil})
+	writeJSON(w, 200, map[string]any{"id": userID, "balance": in.Balance})
 }
 
 func (s *Service) listGroups(w http.ResponseWriter, r *http.Request) {
@@ -260,7 +400,7 @@ func (s *Service) createGroup(w http.ResponseWriter, r *http.Request) {
 		in.Multiplier = 1
 	}
 	if in.Multiplier < 0 {
-		writeError(w, 400, "invalid_request", "multiplier must be greater than zero")
+		writeError(w, 400, "invalid_request", "multiplier must not be negative")
 		return
 	}
 	id, _ := randomID()
@@ -273,12 +413,44 @@ func (s *Service) createGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, map[string]any{"id": id, "name": strings.TrimSpace(in.Name), "multiplier": in.Multiplier})
 }
 
+func (s *Service) importGroups(w http.ResponseWriter, r *http.Request) {
+	var values map[string]float64
+	if decode(r, &values) != nil || len(values) == 0 {
+		writeError(w, 400, "invalid_request", "a non-empty name-to-multiplier object is required")
+		return
+	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		writeError(w, 500, "internal_error", "could not import groups")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	for name, multiplier := range values {
+		name = strings.TrimSpace(name)
+		if name == "" || multiplier < 0 || math.IsNaN(multiplier) || math.IsInf(multiplier, 0) {
+			writeError(w, 400, "invalid_request", "group names must be non-empty and multipliers must not be negative")
+			return
+		}
+		id, _ := randomID()
+		if _, err = tx.Exec(r.Context(), `insert into groups(id,name,multiplier) values($1,$2,$3) on conflict(name) do update set multiplier=excluded.multiplier`, id, name, multiplier); err != nil {
+			writeError(w, 409, "conflict", "could not import groups")
+			return
+		}
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, 500, "internal_error", "could not import groups")
+		return
+	}
+	s.audit(r, "groups.imported", "group", "bulk", map[string]any{"count": len(values)})
+	writeJSON(w, 200, map[string]any{"count": len(values)})
+}
+
 func (s *Service) updateGroup(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Multiplier float64 `json:"multiplier"`
 	}
-	if decode(r, &in) != nil || in.Multiplier <= 0 {
-		writeError(w, 400, "invalid_request", "multiplier must be greater than zero")
+	if decode(r, &in) != nil || in.Multiplier < 0 {
+		writeError(w, 400, "invalid_request", "multiplier must not be negative")
 		return
 	}
 	result, err := s.db.Exec(r.Context(), `update groups set multiplier=$1 where id=$2`, in.Multiplier, r.PathValue("id"))
