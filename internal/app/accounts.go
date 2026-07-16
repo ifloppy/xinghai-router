@@ -131,6 +131,41 @@ func (s *Service) accountKeys(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
 }
 
+func (s *Service) createAccountKey(w http.ResponseWriter, r *http.Request) {
+	account := accountFromContext(r)
+	var in struct {
+		Name      string `json:"name"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "name is required")
+		return
+	}
+	expires, err := parseExpiry(in.ExpiresAt)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "expires_at must be RFC3339")
+		return
+	}
+	secret, err := randomSecret("sk-xh-")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "key generation failed")
+		return
+	}
+	id, err := randomID()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "key generation failed")
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	_, err = s.db.Exec(r.Context(), `insert into api_keys(id,user_id,name,key_prefix,secret_hash,expires_at) values($1,$2,$3,$4,$5,$6)`, id, account.userID, name, secret[:12], hashSecret(secret), expires)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "could not create API key")
+		return
+	}
+	s.audit(r, "api_key.created", "api_key", id, map[string]any{"user_id": account.userID, "name": name, "self_service": true})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "name": name, "key": secret, "expires_at": expires})
+}
+
 func (s *Service) accountUsage(w http.ResponseWriter, r *http.Request) {
 	account := accountFromContext(r)
 	rows, err := s.db.Query(r.Context(), `select request_id,model,prompt_tokens,cached_prompt_tokens,completion_tokens,cost,status,created_at from usage_records where user_id=$1 order by created_at desc limit 100`, account.userID)
