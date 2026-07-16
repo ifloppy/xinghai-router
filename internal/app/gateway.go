@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"io"
@@ -337,7 +338,59 @@ func (s *Service) channelSucceeded(r *http.Request, id string) {
 	_, _ = s.db.Exec(r.Context(), `update channels set failure_count=0,cooldown_until=null,last_error=null,last_checked_at=now(),updated_at=now() where id=$1`, id)
 }
 func (s *Service) channelFailed(r *http.Request, id, reason string) {
-	_, _ = s.db.Exec(r.Context(), `update channels set failure_count=failure_count+1,cooldown_until=case when failure_count+1 >= 3 then now()+interval '1 minute' else cooldown_until end,last_error=$2,last_checked_at=now(),updated_at=now() where id=$1`, id, reason)
+	var failureCount int
+	err := s.db.QueryRow(r.Context(), `update channels set failure_count=failure_count+1,cooldown_until=case when failure_count+1 >= 3 then now()+interval '1 minute' else cooldown_until end,last_error=$2,last_checked_at=now(),updated_at=now() where id=$1 returning failure_count`, id, reason).Scan(&failureCount)
+	if err == nil && failureCount == 3 {
+		go s.testFailedChannel(id)
+	}
+}
+
+// testFailedChannel verifies a newly unhealthy channel outside the client request.
+func (s *Service) testFailedChannel(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.RequestTimeout)
+	defer cancel()
+	var baseURL, encrypted, provider string
+	var enabled, autoDisable bool
+	if err := s.db.QueryRow(ctx, `select c.base_url,c.api_key,c.provider,c.enabled,ss.auto_disable_failed_channels from channels c cross join site_settings ss where c.id=$1 and ss.id=true`, id).Scan(&baseURL, &encrypted, &provider, &enabled, &autoDisable); err != nil || !enabled || !autoDisable {
+		return
+	}
+	apiKey, err := crypt(s.cfg.EncryptionKey, encrypted, true)
+	if err != nil {
+		s.disableFailedChannel(ctx, id, "credential_decryption_failed")
+		return
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/models", nil)
+		if err != nil {
+			s.disableFailedChannel(ctx, id, "invalid_test_request")
+			return
+		}
+		if provider == "anthropic" {
+			request.Header.Set("X-API-Key", apiKey)
+			request.Header.Set("Anthropic-Version", "2023-06-01")
+		} else {
+			request.Header.Set("Authorization", "Bearer "+apiKey)
+		}
+		response, err := s.httpClient.Do(request)
+		if err == nil {
+			response.Body.Close()
+			if response.StatusCode >= 200 && response.StatusCode < 300 {
+				_, _ = s.db.Exec(ctx, `update channels set failure_count=0,cooldown_until=null,last_error=null,last_checked_at=now(),updated_at=now() where id=$1 and enabled`, id)
+				return
+			}
+		}
+	}
+	s.disableFailedChannel(ctx, id, "system_test_failed")
+}
+
+func (s *Service) disableFailedChannel(ctx context.Context, id, reason string) {
+	result, err := s.db.Exec(ctx, `update channels set enabled=false,last_error=$1,last_checked_at=now(),updated_at=now() where id=$2 and enabled and failure_count>=3`, reason, id)
+	if err != nil || result.RowsAffected() != 1 {
+		return
+	}
+	details, _ := json.Marshal(map[string]string{"reason": reason})
+	auditID, _ := randomID()
+	_, _ = s.db.Exec(ctx, `insert into audit_logs(id,action,actor,entity_type,entity_id,details,request_method,request_path) values($1,'channel.auto_disabled','system','channel',$2,$3,'SYSTEM','/system/channel-test')`, auditID, id, details)
 }
 func retryableStatus(status int) bool {
 	return status == 408 || status == 425 || status == 429 || status >= 500

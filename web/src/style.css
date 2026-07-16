@@ -324,6 +324,11 @@ td code { display: inline-block; max-width: 360px; overflow: hidden; padding: 3p
 .model-tags span { border: 1px solid #e4e4e7; color: #52525b; background: #fafafa; }
 .status-dot { background: #22c55e; box-shadow: 0 0 0 3px #dcfce7; }.status-dot.off { background: #a1a1aa; box-shadow: none; }
 .toggle.on { background: #27272a; }
+.channel-table-panel table { min-width: 780px; }
+.channel-table-panel .state { gap: 7px; }
+.channel-table-panel .status-dot { width: 6px; height: 6px; margin: 0; box-shadow: none; }
+.channel-table-panel .model-tags { min-width: 180px; max-width: 360px; margin: 0; }
+.channel-table-panel td:last-child { width: 72px; }
 
 .wallet-hero { min-height: 180px; border-color: #27272a; color: #f4f4f5; background: #18181b; box-shadow: none; }
 .wallet-hero span, .wallet-hero p { color: #a1a1aa; }.wallet-hero > svg { color: #71717a; }

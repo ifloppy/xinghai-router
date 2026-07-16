@@ -49,6 +49,7 @@ func (s *Service) routes() http.Handler {
 	mux.Handle("POST /admin/keys/{id}/revoke", s.permission("keys.manage", s.revokeKey))
 	mux.Handle("PUT /admin/keys/{id}/group", s.permission("keys.manage", s.setKeyGroup))
 	mux.Handle("POST /admin/channels", s.permission("channels.manage", s.createChannel))
+	mux.Handle("PUT /admin/channels/{id}", s.permission("channels.manage", s.updateChannel))
 	mux.Handle("POST /admin/channels/models", s.permission("channels.manage", s.fetchChannelModels))
 	mux.Handle("GET /admin/channels", s.permission("channels.read", s.listChannels))
 	mux.Handle("GET /admin/providers", s.permission("system.manage", s.listProviders))

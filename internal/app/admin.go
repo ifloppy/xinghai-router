@@ -1045,6 +1045,55 @@ func (s *Service) createChannel(w http.ResponseWriter, r *http.Request) {
 	s.audit(r, "channel.created", "channel", id, map[string]any{"name": in.Name, "models": in.Models, "provider": in.Provider})
 	writeJSON(w, 201, map[string]any{"id": id, "name": in.Name, "models": in.Models, "provider": in.Provider, "enabled": true})
 }
+func (s *Service) updateChannel(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name     string   `json:"name"`
+		BaseURL  string   `json:"base_url"`
+		APIKey   string   `json:"api_key"`
+		Models   []string `json:"models"`
+		Priority int      `json:"priority"`
+		Provider string   `json:"provider"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" || len(in.Models) == 0 {
+		writeError(w, 400, "invalid_request", "name and models are required")
+		return
+	}
+	if in.Provider == "" {
+		in.Provider = "openai"
+	}
+	if !map[string]bool{"openai": true, "ollama": true, "kimi": true, "opencode_go": true, "anthropic": true}[in.Provider] {
+		writeError(w, 400, "invalid_request", "unsupported provider")
+		return
+	}
+	u, err := url.Parse(in.BaseURL)
+	if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && isLoopbackHost(u.Hostname()))) {
+		writeError(w, 400, "invalid_request", "base_url must use HTTPS, except for loopback HTTP services")
+		return
+	}
+	models, _ := json.Marshal(in.Models)
+	args := []any{strings.TrimSpace(in.Name), strings.TrimRight(in.BaseURL, "/"), models, in.Priority, in.Provider, r.PathValue("id")}
+	query := `update channels set name=$1,base_url=$2,models=$3,priority=$4,provider=$5,updated_at=now() where id=$6`
+	if strings.TrimSpace(in.APIKey) != "" {
+		encrypted, err := crypt(s.cfg.EncryptionKey, in.APIKey, false)
+		if err != nil {
+			writeError(w, 500, "internal_error", "credential encryption failed")
+			return
+		}
+		args = []any{strings.TrimSpace(in.Name), strings.TrimRight(in.BaseURL, "/"), encrypted, models, in.Priority, in.Provider, r.PathValue("id")}
+		query = `update channels set name=$1,base_url=$2,api_key=$3,models=$4,priority=$5,provider=$6,updated_at=now() where id=$7`
+	}
+	result, err := s.db.Exec(r.Context(), query, args...)
+	if err != nil {
+		writeError(w, 409, "conflict", "channel name already exists")
+		return
+	}
+	if result.RowsAffected() != 1 {
+		writeError(w, 404, "not_found", "channel not found")
+		return
+	}
+	s.audit(r, "channel.updated", "channel", r.PathValue("id"), map[string]any{"name": in.Name, "models": in.Models, "provider": in.Provider})
+	w.WriteHeader(http.StatusNoContent)
+}
 func (s *Service) listChannels(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.Query(r.Context(), `select c.id,c.name,c.base_url,c.models,c.enabled,c.priority,c.created_at,c.updated_at,coalesce((select array_agg(cg.group_id order by cg.group_id) from channel_groups cg where cg.channel_id=c.id), '{}'),c.provider from channels c order by c.priority,c.id`)
 	if err != nil {

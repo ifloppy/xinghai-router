@@ -15,7 +15,7 @@ export interface ModelRanking { rank: number; previous_rank?: number; model_name
 export interface VendorRanking { rank: number; vendor: string; total_tokens: number; share: number; growth_pct: number; models_count: number; top_model: string }
 export interface RankingMover { model_name: string; vendor: string; rank_delta: number; current_rank: number; growth_pct: number }
 export interface Rankings { period: string; models: ModelRanking[]; vendors: VendorRanking[]; top_movers: RankingMover[]; top_droppers: RankingMover[]; total_tokens: number; updated_at: string }
-export interface SiteSettings { name: string; icon_url: string }
+export interface SiteSettings { name: string; icon_url: string; auto_disable_failed_channels: boolean }
 
 let token = import.meta.client ? sessionStorage.getItem('xinghai.admin-token') ?? '' : ''
 export const getToken = () => token

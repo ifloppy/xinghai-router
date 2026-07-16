@@ -64,3 +64,21 @@ func TestUpdateUserRejectsInvalidPartialUpdatesBeforeDatabaseAccess(t *testing.T
 		})
 	}
 }
+
+func TestUpdateChannelRejectsInvalidRequestBeforeDatabaseAccess(t *testing.T) {
+	for _, body := range []string{
+		`{}`,
+		`{"name":"channel","base_url":"https://api.example.com","models":[]}`,
+		`{"name":"channel","base_url":"http://api.example.com","models":["model"]}`,
+		`{"name":"channel","base_url":"https://api.example.com","models":["model"],"provider":"unknown"}`,
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPut, "/admin/channels/channel-id", strings.NewReader(body))
+
+		(&Service{}).updateChannel(recorder, request)
+
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+		}
+	}
+}

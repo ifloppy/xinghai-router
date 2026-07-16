@@ -12,8 +12,8 @@ const title = computed(() => {
   if (route.path === '/auth') return `${t('titleLogin')} | Xinghai Router`
   if (route.path === '/models') return `${t('titleMarketplace')} | Xinghai Router`
   if (route.path === '/rankings') return `${t('titleRankings')} | Xinghai Router`
-  if (route.path === '/terms') return `${locale.value === 'zh-CN' ? '用户协议' : 'Terms of Service'} | Xinghai Router`
-  if (route.path === '/privacy') return `${locale.value === 'zh-CN' ? '隐私协议' : 'Privacy Policy'} | Xinghai Router`
+  if (route.path === '/terms') return `${t('termsTitle')} | Xinghai Router`
+  if (route.path === '/privacy') return `${t('privacyTitle')} | Xinghai Router`
 
   const queryView = route.query.view
   const view = route.path === '/console'

@@ -4,14 +4,14 @@ import { onMounted, ref } from 'vue'
 import type { Rankings, SiteSettings } from '~/src/api'
 
 type Period = 'today' | 'week' | 'month' | 'year'
-const periods: { value: Period; label: string }[] = [{ value: 'today', label: '今天' }, { value: 'week', label: '本周' }, { value: 'month', label: '本月' }, { value: 'year', label: '今年' }]
 const period = ref<Period>('week')
 const rankings = ref<Rankings | null>(null)
-const siteSettings = ref<SiteSettings>({ name: 'Xinghai Router', icon_url: '' })
+const siteSettings = ref<SiteSettings>({ name: 'Xinghai Router', icon_url: '', auto_disable_failed_channels: false })
 const loading = ref(true)
 const error = ref('')
 const theme = ref<'light' | 'dark'>('light')
 const { locale, t, setLocale, initializeLocale } = useI18n()
+const periods: { value: Period; label: string }[] = [{ value: 'today', label: t('today') }, { value: 'week', label: t('thisWeek') }, { value: 'month', label: t('thisMonth') }, { value: 'year', label: t('thisYear') }]
 
 const compactNumber = (value: number) => new Intl.NumberFormat(locale.value, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 const change = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
@@ -23,10 +23,10 @@ async function load(next = period.value) {
   error.value = ''
   try {
     const response = await fetch(`/api/rankings?period=${next}`)
-    if (!response.ok) throw new Error('排行榜数据暂时不可用')
+    if (!response.ok) throw new Error(t('rankingsUnavailable'))
     rankings.value = await response.json()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '排行榜数据暂时不可用'
+    error.value = cause instanceof Error ? cause.message : t('rankingsUnavailable')
   } finally {
     loading.value = false
   }
@@ -73,28 +73,28 @@ onMounted(() => {
 
     <section class="rankings-shell">
       <header class="rankings-hero">
-        <div><span><Trophy :size="15" /> LIVE USAGE RANKINGS</span><h1>模型排行榜</h1><p>发现平台上使用最多的模型与增长中的厂商，排名基于真实 Token 用量更新。</p></div>
-        <div v-if="rankings" class="ranking-total"><strong>{{ compactNumber(rankings.total_tokens) }}</strong><small>周期内 Token</small></div>
+        <div><span><Trophy :size="15" /> LIVE USAGE RANKINGS</span><h1>{{ t('modelRankingsTitle') }}</h1><p>{{ t('rankingsDesc') }}</p></div>
+        <div v-if="rankings" class="ranking-total"><strong>{{ compactNumber(rankings.total_tokens) }}</strong><small>{{ t('periodTokens') }}</small></div>
       </header>
-      <div class="rankings-controls"><div><span>时间范围</span><div class="period-tabs"><button v-for="item in periods" :key="item.value" :class="{ active: period === item.value }" :disabled="loading" @click="selectPeriod(item.value)">{{ item.label }}</button></div></div><button class="ranking-refresh" :disabled="loading" @click="load()"><RefreshCw :size="15" :class="{ spinning: loading }" />更新数据</button></div>
+      <div class="rankings-controls"><div><span>{{ t('timeRange') }}</span><div class="period-tabs"><button v-for="item in periods" :key="item.value" :class="{ active: period === item.value }" :disabled="loading" @click="selectPeriod(item.value)">{{ item.label }}</button></div></div><button class="ranking-refresh" :disabled="loading" @click="load()"><RefreshCw :size="15" :class="{ spinning: loading }" />{{ t('refreshData') }}</button></div>
 
       <div v-if="loading && !rankings" class="rankings-loading"><div></div><div></div><div></div></div>
-      <section v-else-if="error && !rankings" class="rankings-error"><h2>无法加载排行榜</h2><p>{{ error }}</p><button class="button ghost" @click="load()">重新加载</button></section>
+      <section v-else-if="error && !rankings" class="rankings-error"><h2>{{ t('cannotLoadRankings') }}</h2><p>{{ error }}</p><button class="button ghost" @click="load()">{{ t('reload') }}</button></section>
       <template v-else-if="rankings">
         <section class="ranking-panel">
-          <div class="ranking-panel-title"><div><span>TOP MODELS</span><h2>LLM 排行榜</h2><p>按所选周期内的 Token 用量排序</p></div><b>{{ rankings.models.length }} 个模型</b></div>
+          <div class="ranking-panel-title"><div><span>TOP MODELS</span><h2>{{ t('llmRankings') }}</h2><p>{{ t('rankingsSortByTokens') }}</p></div><b>{{ rankings.models.length }} {{ t('modelCount') }}</b></div>
           <div v-if="rankings.models.length" class="model-rankings"><article v-for="item in rankings.models" :key="item.model_name"><b :class="['rank-number', { podium: item.rank <= 3 }]">{{ String(item.rank).padStart(2, '0') }}</b><div class="rank-model"><i>{{ item.model_name.slice(0, 1).toUpperCase() }}</i><span><strong>{{ item.model_name }}</strong><small>{{ item.vendor }}</small></span></div><div class="rank-share"><i><span :style="{ width: `${Math.max(item.share * 100, 1)}%` }"></span></i><small>{{ share(item.share) }}</small></div><div class="rank-tokens"><strong>{{ compactNumber(item.total_tokens) }}</strong><small>Token</small></div><em :class="item.growth_pct < 0 ? 'down' : 'up'"><ArrowDown v-if="item.growth_pct < 0" :size="11" /><ArrowUp v-else :size="11" />{{ change(item.growth_pct) }}</em></article></div>
-          <div v-else class="ranking-empty">所选周期内暂无模型用量</div>
+          <div v-else class="ranking-empty">{{ t('noModelUsage') }}</div>
         </section>
 
         <section class="ranking-panel">
-          <div class="ranking-panel-title"><div><span>MARKET SHARE</span><h2>厂商份额</h2><p>按旗下模型的聚合 Token 用量排名</p></div></div>
-          <div v-if="rankings.vendors.length" class="vendor-list"><article v-for="item in rankings.vendors.slice(0, 12)" :key="item.vendor"><b>{{ String(item.rank).padStart(2, '0') }}</b><div><strong>{{ item.vendor }}</strong><small>{{ item.models_count }} 个模型 · 热门 {{ item.top_model }}</small></div><i><span :style="{ width: `${item.share * 100}%` }"></span></i><span>{{ share(item.share) }}</span><em :class="item.growth_pct < 0 ? 'down' : 'up'">{{ change(item.growth_pct) }}</em></article></div>
-          <div v-else class="ranking-empty">所选周期内暂无厂商数据</div>
+          <div class="ranking-panel-title"><div><span>MARKET SHARE</span><h2>{{ t('vendorShare') }}</h2><p>{{ t('vendorShareDesc') }}</p></div></div>
+          <div v-if="rankings.vendors.length" class="vendor-list"><article v-for="item in rankings.vendors.slice(0, 12)" :key="item.vendor"><b>{{ String(item.rank).padStart(2, '0') }}</b><div><strong>{{ item.vendor }}</strong><small>{{ item.models_count }} {{ t('modelCount') }} · {{ t('topModelLabel') }} {{ item.top_model }}</small></div><i><span :style="{ width: `${item.share * 100}%` }"></span></i><span>{{ share(item.share) }}</span><em :class="item.growth_pct < 0 ? 'down' : 'up'">{{ change(item.growth_pct) }}</em></article></div>
+          <div v-else class="ranking-empty">{{ t('noVendorData') }}</div>
         </section>
 
-        <div class="movers-grid"><section class="ranking-panel"><div class="ranking-panel-title compact"><div><span>TRENDING UP</span><h2>上升趋势</h2></div><ArrowUp :size="18" /></div><div class="mover-list"><article v-for="item in rankings.top_movers" :key="item.model_name"><div><strong>{{ item.model_name }}</strong><small>#{{ item.current_rank }} · {{ item.vendor }}</small></div><b class="up"><ArrowUp :size="13" />{{ item.rank_delta }}</b></article><div v-if="!rankings.top_movers.length" class="ranking-empty small">当前没有显著上升的模型</div></div></section><section class="ranking-panel"><div class="ranking-panel-title compact"><div><span>TRENDING DOWN</span><h2>下降趋势</h2></div><ArrowDown :size="18" /></div><div class="mover-list"><article v-for="item in rankings.top_droppers" :key="item.model_name"><div><strong>{{ item.model_name }}</strong><small>#{{ item.current_rank }} · {{ item.vendor }}</small></div><b class="down"><ArrowDown :size="13" />{{ Math.abs(item.rank_delta) }}</b></article><div v-if="!rankings.top_droppers.length" class="ranking-empty small">当前没有显著下降的模型</div></div></section></div>
-        <p class="rankings-updated">数据更新时间 {{ new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(rankings.updated_at)) }}</p>
+        <div class="movers-grid"><section class="ranking-panel"><div class="ranking-panel-title compact"><div><span>TRENDING UP</span><h2>{{ t('trendingUp') }}</h2></div><ArrowUp :size="18" /></div><div class="mover-list"><article v-for="item in rankings.top_movers" :key="item.model_name"><div><strong>{{ item.model_name }}</strong><small>#{{ item.current_rank }} · {{ item.vendor }}</small></div><b class="up"><ArrowUp :size="13" />{{ item.rank_delta }}</b></article><div v-if="!rankings.top_movers.length" class="ranking-empty small">{{ t('noTrendingUpModels') }}</div></div></section><section class="ranking-panel"><div class="ranking-panel-title compact"><div><span>TRENDING DOWN</span><h2>{{ t('trendingDown') }}</h2></div><ArrowDown :size="18" /></div><div class="mover-list"><article v-for="item in rankings.top_droppers" :key="item.model_name"><div><strong>{{ item.model_name }}</strong><small>#{{ item.current_rank }} · {{ item.vendor }}</small></div><b class="down"><ArrowDown :size="13" />{{ Math.abs(item.rank_delta) }}</b></article><div v-if="!rankings.top_droppers.length" class="ranking-empty small">{{ t('noTrendingDownModels') }}</div></div></section></div>
+        <p class="rankings-updated">{{ t('dataUpdatedAt') }} {{ new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(rankings.updated_at)) }}</p>
       </template>
     </section>
   </main>
