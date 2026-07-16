@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/mail"
 	"sort"
@@ -101,9 +102,9 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) accountMe(w http.ResponseWriter, r *http.Request) {
 	account := r.Context().Value(accountContextKey{}).(accountContext)
-	var email, name, role string
+	var email, name, role, avatarURL string
 	var balance, reserved any
-	err := s.db.QueryRow(r.Context(), `select u.email,u.name,u.role,coalesce(w.balance,0),coalesce(w.reserved,0) from users u left join user_wallets w on w.user_id=u.id where u.id=$1`, account.userID).Scan(&email, &name, &role, &balance, &reserved)
+	err := s.db.QueryRow(r.Context(), `select u.email,u.name,u.role,u.avatar_url,coalesce(w.balance,0),coalesce(w.reserved,0) from users u left join user_wallets w on w.user_id=u.id where u.id=$1`, account.userID).Scan(&email, &name, &role, &avatarURL, &balance, &reserved)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "could not load account")
 		return
@@ -113,7 +114,45 @@ func (s *Service) accountMe(w http.ResponseWriter, r *http.Request) {
 		permissions = append(permissions, permission)
 	}
 	sort.Strings(permissions)
-	writeJSON(w, http.StatusOK, map[string]any{"id": account.userID, "email": email, "name": name, "role": role, "permissions": permissions, "balance": balance, "reserved": reserved})
+	writeJSON(w, http.StatusOK, map[string]any{"id": account.userID, "email": email, "name": name, "role": role, "avatar_url": avatarURL, "permissions": permissions, "balance": balance, "reserved": reserved})
+}
+
+func (s *Service) updateAccountProfile(w http.ResponseWriter, r *http.Request) {
+	account := accountFromContext(r)
+	var in struct {
+		AvatarURL string `json:"avatar_url"`
+	}
+	if decode(r, &in) != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "invalid profile")
+		return
+	}
+	avatarURL := strings.TrimSpace(in.AvatarURL)
+	if avatarURL != "" {
+		if len(avatarURL) > 2<<20 || !strings.HasPrefix(avatarURL, "data:image/") {
+			writeError(w, http.StatusBadRequest, "invalid_request", "avatar must be an image smaller than 2 MB")
+			return
+		}
+		comma := strings.IndexByte(avatarURL, ',')
+		if comma < 0 || !strings.HasSuffix(avatarURL[:comma], ";base64") {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid avatar image")
+			return
+		}
+		mime := strings.TrimPrefix(strings.TrimSuffix(avatarURL[:comma], ";base64"), "data:")
+		if !map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}[mime] {
+			writeError(w, http.StatusBadRequest, "invalid_request", "avatar must be PNG, JPEG, GIF, or WebP")
+			return
+		}
+		if _, err := base64.StdEncoding.DecodeString(avatarURL[comma+1:]); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid avatar image")
+			return
+		}
+	}
+	if _, err := s.db.Exec(r.Context(), `update users set avatar_url=$1 where id=$2`, avatarURL, account.userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "could not save avatar")
+		return
+	}
+	s.audit(r, "account.avatar_updated", "user", account.userID, nil)
+	writeJSON(w, http.StatusOK, map[string]string{"avatar_url": avatarURL})
 }
 
 func (s *Service) accountKeys(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +240,40 @@ func (s *Service) setAccountKeyGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "api_key.group_changed", "api_key", r.PathValue("id"), map[string]any{"group_id": groupID, "self_service": true})
 	writeJSON(w, http.StatusOK, map[string]any{"group_id": groupID})
+}
+
+func (s *Service) updateAccountKey(w http.ResponseWriter, r *http.Request) {
+	account := accountFromContext(r)
+	var in struct {
+		Name      string `json:"name"`
+		ExpiresAt string `json:"expires_at"`
+		GroupID   string `json:"group_id"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" || len(strings.TrimSpace(in.Name)) > 100 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "name is required and must be at most 100 characters")
+		return
+	}
+	expires, err := parseExpiry(in.ExpiresAt)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "expires_at must be RFC3339")
+		return
+	}
+	groupID, err := s.validKeyGroup(r.Context(), account.userID, in.GroupID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "group must belong to user")
+		return
+	}
+	result, err := s.db.Exec(r.Context(), `update api_keys set name=$1,expires_at=$2,group_id=$3 where id=$4 and user_id=$5`, strings.TrimSpace(in.Name), expires, groupID, r.PathValue("id"), account.userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "could not update API key")
+		return
+	}
+	if result.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "not_found", "API key not found")
+		return
+	}
+	s.audit(r, "api_key.updated", "api_key", r.PathValue("id"), map[string]any{"name": strings.TrimSpace(in.Name), "expires_at": expires, "group_id": groupID, "self_service": true})
+	writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id"), "name": strings.TrimSpace(in.Name), "expires_at": expires, "group_id": groupID})
 }
 
 func (s *Service) accountUsage(w http.ResponseWriter, r *http.Request) {

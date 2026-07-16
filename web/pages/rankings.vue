@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { ArrowDown, ArrowLeft, ArrowUp, Bot, Moon, RefreshCw, Sun, Trophy } from 'lucide-vue-next'
 import { onMounted, ref } from 'vue'
-import type { Rankings } from '~/src/api'
+import type { Rankings, SiteSettings } from '~/src/api'
 
 type Period = 'today' | 'week' | 'month' | 'year'
 const periods: { value: Period; label: string }[] = [{ value: 'today', label: '今天' }, { value: 'week', label: '本周' }, { value: 'month', label: '本月' }, { value: 'year', label: '今年' }]
 const period = ref<Period>('week')
 const rankings = ref<Rankings | null>(null)
+const siteSettings = ref<SiteSettings>({ name: 'Xinghai Router', icon_url: '' })
 const loading = ref(true)
 const error = ref('')
 const theme = ref<'light' | 'dark'>('light')
+const { locale, t, setLocale, initializeLocale } = useI18n()
 
-const compactNumber = (value: number) => new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+const compactNumber = (value: number) => new Intl.NumberFormat(locale.value, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 const change = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
 const share = (value: number) => value > 0 && value < .001 ? '<0.1%' : `${(value * 100).toFixed(1)}%`
 
@@ -29,6 +31,16 @@ async function load(next = period.value) {
     loading.value = false
   }
 }
+async function loadSiteSettings() {
+  const response = await fetch('/api/site-settings')
+  if (!response.ok) return
+  siteSettings.value = await response.json() as SiteSettings
+  document.title = `${siteSettings.value.name} · ${t('titleRankings')}`
+  if (siteSettings.value.icon_url) {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'icon' }))
+    link.href = siteSettings.value.icon_url
+  }
+}
 
 function setTheme(next: 'light' | 'dark') {
   theme.value = next
@@ -42,19 +54,21 @@ function selectPeriod(next: Period) {
 }
 
 onMounted(() => {
+  initializeLocale()
   const saved = localStorage.getItem('xinghai-router-theme')
   setTheme(saved === 'dark' || saved === 'light' ? saved : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
   const queryPeriod = new URLSearchParams(location.search).get('period') as Period | null
   if (queryPeriod && periods.some((item) => item.value === queryPeriod)) period.value = queryPeriod
+  loadSiteSettings()
   load()
 })
 </script>
 
 <template>
   <main class="rankings-page">
-    <nav class="rankings-nav">
-      <a class="landing-logo" href="/"><span class="brand-mark small"><Bot :size="19" /></span><span>Xinghai</span><i>Router</i></a>
-      <div><a class="back-link" href="/"><ArrowLeft :size="14" />返回首页</a><button class="theme-toggle" aria-label="切换主题" @click="setTheme(theme === 'dark' ? 'light' : 'dark')"><Sun v-if="theme === 'dark'" :size="16" /><Moon v-else :size="16" /></button><a class="button primary" href="/auth">进入控制台</a></div>
+     <nav class="rankings-nav">
+       <a class="landing-logo" href="/"><span class="brand-mark small"><Bot :size="19" /></span><span>{{ siteSettings.name }}</span></a>
+       <div><a class="back-link" href="/"><ArrowLeft :size="14" />{{ t('backHome') }}</a><button class="theme-toggle" :aria-label="theme === 'dark' ? t('lightMode') : t('darkMode')" @click="setTheme(theme === 'dark' ? 'light' : 'dark')"><Sun v-if="theme === 'dark'" :size="16" /><Moon v-else :size="16" /></button><select v-model="locale" class="language-select" :aria-label="t('switchLanguage')"><option value="zh-CN">{{ t('chinese') }}</option><option value="en-US">{{ t('english') }}</option></select><a class="button primary" href="/auth">{{ t('console') }}</a></div>
     </nav>
 
     <section class="rankings-shell">

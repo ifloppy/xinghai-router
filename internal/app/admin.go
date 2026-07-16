@@ -111,8 +111,106 @@ func (s *Service) upsertPricing(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"model": in.Model})
 }
 
+type newAPIPricing struct {
+	ModelName       string   `json:"model_name"`
+	QuotaType       int      `json:"quota_type"`
+	ModelRatio      float64  `json:"model_ratio"`
+	CompletionRatio float64  `json:"completion_ratio"`
+	CacheRatio      *float64 `json:"cache_ratio"`
+}
+
+func newAPIPricePerMillion(modelRatio, pricePerQuotaUnit, quotaPerUnit float64) float64 {
+	return modelRatio * 1000000 * pricePerQuotaUnit / quotaPerUnit
+}
+
+func (s *Service) syncNewAPIPricing(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		BaseURL           string  `json:"base_url"`
+		APIKey            string  `json:"api_key"`
+		PricePerQuotaUnit float64 `json:"price_per_quota_unit"`
+	}
+	if decode(r, &in) != nil || in.PricePerQuotaUnit < 0 {
+		writeError(w, 400, "invalid_request", "invalid NewAPI pricing source")
+		return
+	}
+	baseURL, err := url.Parse(strings.TrimRight(strings.TrimSpace(in.BaseURL), "/"))
+	if err != nil || baseURL.Host == "" || (baseURL.Scheme != "https" && !(baseURL.Scheme == "http" && isLoopbackHost(baseURL.Hostname()))) {
+		writeError(w, 400, "invalid_request", "base_url must use HTTPS, except for loopback HTTP services")
+		return
+	}
+	fetch := func(path string, out any) error {
+		target := *baseURL
+		target.Path = strings.TrimRight(target.Path, "/") + path
+		request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target.String(), nil)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(in.APIKey) != "" {
+			request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(in.APIKey))
+		}
+		response, err := s.httpClient.Do(request)
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+		if err != nil || response.StatusCode < 200 || response.StatusCode >= 300 {
+			return io.ErrUnexpectedEOF
+		}
+		return json.Unmarshal(body, out)
+	}
+	var status struct {
+		Success bool `json:"success"`
+		Data    struct {
+			QuotaPerUnit float64 `json:"quota_per_unit"`
+		} `json:"data"`
+	}
+	var pricing struct {
+		Success bool            `json:"success"`
+		Data    []newAPIPricing `json:"data"`
+	}
+	if err := fetch("/api/status", &status); err != nil || !status.Success || status.Data.QuotaPerUnit <= 0 {
+		writeError(w, 502, "upstream_error", "could not read NewAPI quota configuration")
+		return
+	}
+	if err := fetch("/api/pricing", &pricing); err != nil || !pricing.Success {
+		writeError(w, 502, "upstream_error", "could not read NewAPI pricing")
+		return
+	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		writeError(w, 500, "internal_error", "could not save pricing rules")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	synced := 0
+	for _, item := range pricing.Data {
+		if strings.TrimSpace(item.ModelName) == "" || item.QuotaType != 0 || item.ModelRatio < 0 || item.CompletionRatio < 0 {
+			continue
+		}
+		input := newAPIPricePerMillion(item.ModelRatio, in.PricePerQuotaUnit, status.Data.QuotaPerUnit)
+		output := input * item.CompletionRatio
+		cached := 0.0
+		if item.CacheRatio != nil && *item.CacheRatio >= 0 {
+			cached = input * *item.CacheRatio
+		}
+		id, _ := randomID()
+		if _, err = tx.Exec(r.Context(), `insert into pricing_rules(id,model,input_per_million,cached_input_per_million,output_per_million,multiplier) values($1,$2,$3,$4,$5,1) on conflict(model) do update set input_per_million=excluded.input_per_million,cached_input_per_million=excluded.cached_input_per_million,output_per_million=excluded.output_per_million,updated_at=now()`, id, strings.TrimSpace(item.ModelName), input, cached, output); err != nil {
+			writeError(w, 500, "internal_error", "could not save pricing rules")
+			return
+		}
+		synced++
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, 500, "internal_error", "could not save pricing rules")
+		return
+	}
+	s.audit(r, "pricing.newapi_synced", "pricing", "newapi", map[string]any{"count": synced, "quota_per_unit": status.Data.QuotaPerUnit})
+	writeJSON(w, 200, map[string]any{"synced": synced, "skipped": len(pricing.Data) - synced})
+}
+
 func (s *Service) listAuditLogs(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `select id,action,actor,entity_type,entity_id,details,created_at from audit_logs order by created_at desc limit 100`)
+	rows, err := s.db.Query(r.Context(), `select id,action,actor,entity_type,entity_id,details,client_ip,forwarded_for,user_agent,browser,browser_version,operating_system,operating_system_version,device_type,is_bot,request_method,request_path,request_id,created_at from audit_logs order by created_at desc limit 100`)
 	if err != nil {
 		writeError(w, 500, "internal_error", "query failed")
 		return
@@ -120,11 +218,12 @@ func (s *Service) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	data := []map[string]any{}
 	for rows.Next() {
-		var id, action, actor, typ, entity string
+		var id, action, actor, typ, entity, clientIP, forwardedFor, userAgent, browser, browserVersion, operatingSystem, operatingSystemVersion, deviceType, method, path, requestID string
+		var isBot bool
 		var details []byte
 		var created any
-		if rows.Scan(&id, &action, &actor, &typ, &entity, &details, &created) == nil {
-			data = append(data, map[string]any{"id": id, "action": action, "actor": actor, "entity_type": typ, "entity_id": entity, "details": json.RawMessage(details), "created_at": created})
+		if rows.Scan(&id, &action, &actor, &typ, &entity, &details, &clientIP, &forwardedFor, &userAgent, &browser, &browserVersion, &operatingSystem, &operatingSystemVersion, &deviceType, &isBot, &method, &path, &requestID, &created) == nil {
+			data = append(data, map[string]any{"id": id, "action": action, "actor": actor, "entity_type": typ, "entity_id": entity, "details": json.RawMessage(details), "client_ip": clientIP, "forwarded_for": forwardedFor, "user_agent": userAgent, "browser": browser, "browser_version": browserVersion, "operating_system": operatingSystem, "operating_system_version": operatingSystemVersion, "device_type": deviceType, "is_bot": isBot, "request_method": method, "request_path": path, "request_id": requestID, "created_at": created})
 		}
 	}
 	writeJSON(w, 200, map[string]any{"data": data})
@@ -137,7 +236,8 @@ func (s *Service) audit(r *http.Request, action, entityType, entityID string, de
 func (s *Service) auditActor(r *http.Request, actor, action, entityType, entityID string, details map[string]any) {
 	raw, _ := json.Marshal(details)
 	id, _ := randomID()
-	_, _ = s.db.Exec(r.Context(), `insert into audit_logs(id,action,actor,entity_type,entity_id,details) values($1,$2,$3,$4,$5,$6)`, id, action, actor, entityType, entityID, raw)
+	meta := requestMetadata(r)
+	_, _ = s.db.Exec(r.Context(), `insert into audit_logs(id,action,actor,entity_type,entity_id,details,client_ip,forwarded_for,user_agent,browser,browser_version,operating_system,operating_system_version,device_type,is_bot,request_method,request_path,request_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`, id, action, actor, entityType, entityID, raw, meta.clientIP, meta.forwardedFor, meta.userAgent, meta.browser, meta.browserVersion, meta.operatingSystem, meta.operatingSystemVersion, meta.deviceType, meta.isBot, r.Method, r.URL.Path, requestID(r.Context()))
 }
 
 func (s *Service) listUsers(w http.ResponseWriter, r *http.Request) {
@@ -559,6 +659,7 @@ func (s *Service) updateGroup(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) modelCatalog(w http.ResponseWriter, r *http.Request) {
 	account := accountFromContext(r)
+	providers := s.providers(r)
 	rows, err := s.db.Query(r.Context(), `
 		with available as (
 			select jsonb_array_elements_text(c.models) as model, c.id as channel_id
@@ -615,7 +716,8 @@ func (s *Service) modelCatalog(w http.ResponseWriter, r *http.Request) {
 	data := make([]map[string]any, 0, len(order))
 	for _, model := range order {
 		item := models[model]
-		data = append(data, map[string]any{"id": item.ID, "model": item.Model, "input_per_million": item.Input, "cached_input_per_million": item.Cached, "output_per_million": item.Output, "multiplier": item.Multiplier, "groups": item.Groups})
+		provider := providerForModel(item.Model, providers)
+		data = append(data, map[string]any{"id": item.ID, "model": item.Model, "provider": provider.Name, "provider_slug": provider.Slug, "input_per_million": item.Input, "cached_input_per_million": item.Cached, "output_per_million": item.Output, "multiplier": item.Multiplier, "groups": item.Groups})
 	}
 	groupList := make([]map[string]any, 0, len(groups))
 	for _, group := range groups {

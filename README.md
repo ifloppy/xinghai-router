@@ -106,10 +106,17 @@ curl -X POST http://localhost:8080/admin/pricing \
   -H "Authorization: Bearer $SESSION_TOKEN" -H 'Content-Type: application/json' \
   -d '{"model":"gpt-4o-mini","input_per_million":0.15,"cached_input_per_million":0.075,"output_per_million":0.60,"multiplier":1}'
 
+# 从 NewAPI 同步 token 模型定价；price_per_quota_unit 是 quota_per_unit 配额对应的本地货币价格
+curl -X POST http://localhost:8080/admin/pricing/newapi/sync \
+  -H "Authorization: Bearer $SESSION_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"base_url":"https://newapi.example.com","api_key":"NEWAPI_SESSION_OR_TOKEN","price_per_quota_unit":0.000002}'
+
 curl -X POST http://localhost:8080/admin/wallets/adjustments \
   -H "Authorization: Bearer $SESSION_TOKEN" -H 'Content-Type: application/json' \
   -d '{"user_id":"USER_UUID","amount":10,"note":"initial credit"}'
 ```
+
+同步会读取 NewAPI 的 `/api/status` 与 `/api/pricing`，将 token 计费模型的 `model_ratio`、`completion_ratio` 和 `cache_ratio` 换算为每百万 token 的本地价格。`price_per_quota_unit` 是 `quota_per_unit` 个 NewAPI 配额的本地货币价格，例如 NewAPI 的 `quota_per_unit` 为 500,000，且 500,000 配额兑换 1 元时填 `1`。按次计费模型不会被导入；已存在规则的结算倍率保持不变。
 
 Create a public-model alias for a specific channel, or apply a request quota to a user/API key:
 

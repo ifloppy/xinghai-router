@@ -3,7 +3,6 @@ package app
 import (
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -37,6 +36,17 @@ type rankingTotals struct {
 	current, previous int64
 }
 
+// modelVendor preserves the default labels used by older callers and tests.
+func modelVendor(model string) string {
+	return providerForModel(model, []modelProvider{
+		{Name: "OpenAI", Prefixes: []string{"gpt-", "o1", "o3", "o4"}, Priority: 10},
+		{Name: "Anthropic", Prefixes: []string{"claude"}, Priority: 20},
+		{Name: "Google", Prefixes: []string{"gemini"}, Priority: 30},
+		{Name: "DeepSeek", Prefixes: []string{"deepseek"}, Priority: 40},
+		{Name: "Alibaba", Prefixes: []string{"qwen", "qwq"}, Priority: 50},
+	}).Name
+}
+
 func rankingDuration(period string) (time.Duration, bool) {
 	switch period {
 	case "today":
@@ -62,16 +72,6 @@ func growthPercent(current, previous int64) float64 {
 	return float64(current-previous) / float64(previous) * 100
 }
 
-func modelVendor(model string) string {
-	name := strings.ToLower(model)
-	for _, item := range []struct{ prefix, vendor string }{{"gpt-", "OpenAI"}, {"o1", "OpenAI"}, {"o3", "OpenAI"}, {"o4", "OpenAI"}, {"claude", "Anthropic"}, {"gemini", "Google"}, {"deepseek", "DeepSeek"}, {"qwen", "Alibaba"}, {"qwq", "Alibaba"}, {"glm", "Zhipu"}, {"mistral", "Mistral"}, {"codestral", "Mistral"}, {"grok", "xAI"}, {"llama", "Meta"}, {"moonshot", "Moonshot"}, {"kimi", "Moonshot"}} {
-		if strings.HasPrefix(name, item.prefix) {
-			return item.vendor
-		}
-	}
-	return "其他"
-}
-
 func (s *Service) rankings(w http.ResponseWriter, r *http.Request) {
 	period := r.URL.Query().Get("period")
 	if period == "" {
@@ -83,6 +83,7 @@ func (s *Service) rankings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC()
+	providers := s.providers(r)
 	start := now.Add(-duration)
 	previousStart := start.Add(-duration)
 	rows, err := s.db.Query(r.Context(), `select model,coalesce(sum(prompt_tokens+completion_tokens) filter(where created_at >= $1),0),coalesce(sum(prompt_tokens+completion_tokens) filter(where created_at < $1),0) from usage_records where created_at >= $2 and created_at < $3 group by model`, start, previousStart, now)
@@ -126,7 +127,7 @@ func (s *Service) rankings(w http.ResponseWriter, r *http.Request) {
 		if allTokens > 0 {
 			share = float64(item.current) / float64(allTokens)
 		}
-		models = append(models, modelRanking{len(models) + 1, previousRanks[item.model], item.model, modelVendor(item.model), item.current, share, growthPercent(item.current, item.previous)})
+		models = append(models, modelRanking{len(models) + 1, previousRanks[item.model], item.model, providerForModel(item.model, providers).Name, item.current, share, growthPercent(item.current, item.previous)})
 	}
 	type vendorTotals struct {
 		current, previous int64
@@ -134,7 +135,7 @@ func (s *Service) rankings(w http.ResponseWriter, r *http.Request) {
 	}
 	byVendor := map[string]*vendorTotals{}
 	for _, item := range totals {
-		vendor := modelVendor(item.model)
+		vendor := providerForModel(item.model, providers).Name
 		if byVendor[vendor] == nil {
 			byVendor[vendor] = &vendorTotals{models: map[string]int64{}}
 		}

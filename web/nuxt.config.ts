@@ -2,13 +2,15 @@ export default defineNuxtConfig({
   css: ['~/src/style.css'],
   nitro: {
     prerender: {
-      routes: ['/', '/auth', '/rankings'],
+      routes: ['/', '/auth', '/rankings', '/terms', '/privacy'],
     },
   },
   routeRules: {
     '/': { prerender: true },
     '/auth': { prerender: true },
-    '/rankings': { prerender: true },
+  '/rankings': { prerender: true },
+    '/terms': { prerender: true },
+    '/privacy': { prerender: true },
   },
   devServer: { port: 5173, host: '127.0.0.1' },
   compatibilityDate: '2026-07-16',
