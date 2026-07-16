@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Activity, Bot, Check, ChevronRight, CircleAlert, Copy, KeyRound, LayoutDashboard, LogOut, Plus, RadioTower, RefreshCw, TerminalSquare, Users, WalletCards, ReceiptText, Tags } from 'lucide-vue-next'
 import { api, clearToken, getToken, setToken } from '~/src/api'
 import type { Account, ApiKey, Channel, LedgerEntry, Pricing, RequestLog, UsageRecord, User } from '~/src/api'
 
 type View = 'overview' | 'users' | 'keys' | 'channels' | 'logs' | 'account' | 'usage' | 'ledger' | 'pricing' | 'audit'
-const props = defineProps<{ activeView?: View }>()
+const props = withDefaults(defineProps<{ activeView?: View }>(), { activeView: 'overview' })
 const route = useRoute()
 const router = useRouter()
 const views: View[] = ['overview', 'users', 'keys', 'channels', 'logs', 'account', 'usage', 'ledger', 'pricing', 'audit']
-const view = ref<View>(props.activeView ?? (views.includes(route.params.view as View) ? route.params.view as View : 'overview'))
+const view = computed<View>(() => {
+  if (props.activeView && views.includes(props.activeView)) return props.activeView
+  return views.includes(route.params.view as View) ? route.params.view as View : 'overview'
+})
 const authenticated = ref(false)
 const mode = ref<'admin' | 'user'>('user')
 const error = ref('')
@@ -84,8 +87,6 @@ function openAuth() { router.push('/auth') }
 function openConsoleOrAuth() { router.push(authenticated.value ? '/console/overview' : '/auth') }
 function closeAuth() { router.push('/') }
 function openConsole(nextView: string) { if (views.includes(nextView as View)) router.push(`/console/${nextView}`) }
-watch(() => props.activeView, (value) => { if (value) view.value = value })
-watch(() => route.params.view, (value) => { if (!props.activeView && views.includes(value as View)) view.value = value as View })
 onMounted(async () => {
 	 authenticated.value = Boolean(getToken())
   if (!authenticated.value) return
