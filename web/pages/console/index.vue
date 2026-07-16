@@ -5,5 +5,5 @@ definePageMeta({ middleware: 'console-auth' })
 </script>
 
 <template>
-  <RouterApp active-view="overview" />
+  <RouterApp />
 </template>

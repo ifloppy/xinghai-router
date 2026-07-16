@@ -10,6 +10,7 @@ const route = useRoute()
 const router = useRouter()
 const views: View[] = ['overview', 'users', 'keys', 'channels', 'logs', 'account', 'usage', 'ledger', 'pricing', 'audit']
 const view = computed<View>(() => {
+  if (views.includes(route.query.view as View)) return route.query.view as View
   if (props.activeView && views.includes(props.activeView)) return props.activeView
   return views.includes(route.params.view as View) ? route.params.view as View : 'overview'
 })
@@ -86,7 +87,7 @@ async function saveUserAccess() { if (!selectedUser.value) return; await action(
 function openAuth() { router.push('/auth') }
 function openConsoleOrAuth() { router.push(authenticated.value ? '/console/overview' : '/auth') }
 function closeAuth() { router.push('/') }
-function openConsole(nextView: string) { if (views.includes(nextView as View)) router.push(`/console/${nextView}`) }
+function openConsole(nextView: string) { if (views.includes(nextView as View)) router.push({ path: '/console', query: { view: nextView } }) }
 onMounted(async () => {
 	 authenticated.value = Boolean(getToken())
   if (!authenticated.value) return
@@ -125,7 +126,7 @@ onMounted(async () => {
       <div class="sidebar-footer"><span><span class="live-dot"></span>网关在线</span><button @click="signOut"><LogOut :size="16" />退出</button></div>
     </aside>
     <section class="content">
-       <header><div><p class="eyebrow">{{ mode === 'admin' ? '运营控制台' : '个人控制台' }}</p><h1>{{ [...nav, ...userNav, ...adminExtraNav].find((item) => item[0] === view)?.[1] }}</h1></div><button class="button ghost" @click="load" :disabled="busy"><RefreshCw :size="16" :class="{ spinning: busy }" />刷新</button></header>
+        <header class="console-header"><div><p class="eyebrow">{{ mode === 'admin' ? '运营控制台' : '个人控制台' }}</p><h1>{{ [...nav, ...userNav, ...adminExtraNav].find((item) => item[0] === view)?.[1] }}</h1></div><div class="header-actions"><span class="account-chip"><i>{{ account?.name?.slice(0, 1) || '?' }}</i>{{ account?.name || '正在加载' }}</span><button class="button ghost" @click="load" :disabled="busy"><RefreshCw :size="16" :class="{ spinning: busy }" />刷新</button></div></header>
       <p v-if="error" class="error banner"><CircleAlert :size="16" />{{ error }}</p>
 
       <template v-if="view === 'overview'">
