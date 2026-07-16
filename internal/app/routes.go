@@ -27,6 +27,17 @@ func (s *Service) routes() http.Handler {
 	mux.Handle("GET /admin/channels", s.admin(s.listChannels))
 	mux.Handle("POST /admin/channels/{id}/status", s.admin(s.setChannelStatus))
 	mux.Handle("GET /admin/request-logs", s.admin(s.listLogs))
+	mux.Handle("GET /admin/pricing", s.admin(s.listPricing))
+	mux.Handle("POST /admin/pricing", s.admin(s.upsertPricing))
+	mux.Handle("GET /admin/audit-logs", s.admin(s.listAuditLogs))
+	mux.Handle("POST /admin/wallets/adjustments", s.admin(s.adjustBalance))
+	mux.Handle("GET /admin/model-routes", s.admin(s.listModelRoutes))
+	mux.Handle("POST /admin/model-routes", s.admin(s.createModelRoute))
+	mux.Handle("POST /admin/quota-limits", s.admin(s.upsertQuota))
+	mux.Handle("GET /me", s.api(s.me))
+	mux.Handle("GET /me/keys", s.api(s.myKeys))
+	mux.Handle("GET /me/usage", s.api(s.myUsage))
+	mux.Handle("GET /me/ledger", s.api(s.myLedger))
 	mux.Handle("GET /v1/models", s.api(s.models))
 	mux.Handle("POST /v1/chat/completions", s.api(s.chatCompletions))
 	return s.requestID(mux)
@@ -74,6 +85,73 @@ func (s *Service) api(next http.HandlerFunc) http.Handler {
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, k)))
 	})
+}
+
+func (s *Service) me(w http.ResponseWriter, r *http.Request) {
+	key := r.Context().Value(contextKey{}).(keyContext)
+	var email, name, role string
+	var balance, reserved any
+	err := s.db.QueryRow(r.Context(), `select u.email,u.name,u.role,coalesce(w.balance,0),coalesce(w.reserved,0) from users u left join user_wallets w on w.user_id=u.id where u.id=$1`, key.userID).Scan(&email, &name, &role, &balance, &reserved)
+	if err != nil {
+		writeError(w, 500, "internal_error", "could not load account")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"user_id": key.userID, "key_id": key.keyID, "email": email, "name": name, "role": role, "balance": balance, "reserved": reserved})
+}
+func (s *Service) myKeys(w http.ResponseWriter, r *http.Request) {
+	key := r.Context().Value(contextKey{}).(keyContext)
+	rows, err := s.db.Query(r.Context(), `select id,name,key_prefix,expires_at,revoked_at,last_used_at,created_at from api_keys where user_id=$1 order by created_at desc`, key.userID)
+	if err != nil {
+		writeError(w, 500, "internal_error", "query failed")
+		return
+	}
+	defer rows.Close()
+	data := []map[string]any{}
+	for rows.Next() {
+		var id, name, prefix string
+		var expires, revoked, used, created any
+		if rows.Scan(&id, &name, &prefix, &expires, &revoked, &used, &created) == nil {
+			data = append(data, map[string]any{"id": id, "name": name, "key_prefix": prefix, "expires_at": expires, "revoked_at": revoked, "last_used_at": used, "created_at": created})
+		}
+	}
+	writeJSON(w, 200, map[string]any{"data": data})
+}
+func (s *Service) myUsage(w http.ResponseWriter, r *http.Request) {
+	key := r.Context().Value(contextKey{}).(keyContext)
+	rows, err := s.db.Query(r.Context(), `select request_id,model,prompt_tokens,cached_prompt_tokens,completion_tokens,cost,status,created_at from usage_records where user_id=$1 order by created_at desc limit 100`, key.userID)
+	if err != nil {
+		writeError(w, 500, "internal_error", "query failed")
+		return
+	}
+	defer rows.Close()
+	data := []map[string]any{}
+	for rows.Next() {
+		var requestID, model, status string
+		var prompt, cached, completion int
+		var cost, created any
+		if rows.Scan(&requestID, &model, &prompt, &cached, &completion, &cost, &status, &created) == nil {
+			data = append(data, map[string]any{"request_id": requestID, "model": model, "prompt_tokens": prompt, "cached_prompt_tokens": cached, "completion_tokens": completion, "cost": cost, "status": status, "created_at": created})
+		}
+	}
+	writeJSON(w, 200, map[string]any{"data": data})
+}
+func (s *Service) myLedger(w http.ResponseWriter, r *http.Request) {
+	key := r.Context().Value(contextKey{}).(keyContext)
+	rows, err := s.db.Query(r.Context(), `select id,amount,balance_after,kind,request_id,note,created_at from wallet_ledger where user_id=$1 order by created_at desc limit 100`, key.userID)
+	if err != nil {
+		writeError(w, 500, "internal_error", "query failed")
+		return
+	}
+	defer rows.Close()
+	data := []map[string]any{}
+	for rows.Next() {
+		var id, kind, requestID, note string
+		var amount, after, created any
+		if rows.Scan(&id, &amount, &after, &kind, &requestID, &note, &created) == nil {
+			data = append(data, map[string]any{"id": id, "amount": amount, "balance_after": after, "kind": kind, "request_id": requestID, "note": note, "created_at": created})
+		}
+	}
+	writeJSON(w, 200, map[string]any{"data": data})
 }
 func bearer(r *http.Request) string {
 	const p = "Bearer "
