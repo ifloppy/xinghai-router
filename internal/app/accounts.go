@@ -112,6 +112,65 @@ func (s *Service) accountMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": account.userID, "email": email, "name": name, "role": role, "permissions": permissions, "balance": balance, "reserved": reserved})
 }
 
+func (s *Service) accountKeys(w http.ResponseWriter, r *http.Request) {
+	account := accountFromContext(r)
+	rows, err := s.db.Query(r.Context(), `select id,name,key_prefix,expires_at,revoked_at,last_used_at,created_at from api_keys where user_id=$1 order by created_at desc`, account.userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "query failed")
+		return
+	}
+	defer rows.Close()
+	data := []map[string]any{}
+	for rows.Next() {
+		var id, name, prefix string
+		var expires, revoked, used, created any
+		if rows.Scan(&id, &name, &prefix, &expires, &revoked, &used, &created) == nil {
+			data = append(data, map[string]any{"id": id, "name": name, "key_prefix": prefix, "expires_at": expires, "revoked_at": revoked, "last_used_at": used, "created_at": created})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+}
+
+func (s *Service) accountUsage(w http.ResponseWriter, r *http.Request) {
+	account := accountFromContext(r)
+	rows, err := s.db.Query(r.Context(), `select request_id,model,prompt_tokens,cached_prompt_tokens,completion_tokens,cost,status,created_at from usage_records where user_id=$1 order by created_at desc limit 100`, account.userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "query failed")
+		return
+	}
+	defer rows.Close()
+	data := []map[string]any{}
+	for rows.Next() {
+		var requestID, model, status string
+		var prompt, cached, completion int
+		var cost, created any
+		if rows.Scan(&requestID, &model, &prompt, &cached, &completion, &cost, &status, &created) == nil {
+			data = append(data, map[string]any{"request_id": requestID, "model": model, "prompt_tokens": prompt, "cached_prompt_tokens": cached, "completion_tokens": completion, "cost": cost, "status": status, "created_at": created})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+}
+
+func (s *Service) accountLedger(w http.ResponseWriter, r *http.Request) {
+	account := accountFromContext(r)
+	rows, err := s.db.Query(r.Context(), `select id,amount,balance_after,kind,request_id,note,created_at from wallet_ledger where user_id=$1 order by created_at desc limit 100`, account.userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "query failed")
+		return
+	}
+	defer rows.Close()
+	data := []map[string]any{}
+	for rows.Next() {
+		var id, kind string
+		var requestID, note any
+		var amount, after, created any
+		if rows.Scan(&id, &amount, &after, &kind, &requestID, &note, &created) == nil {
+			data = append(data, map[string]any{"id": id, "amount": amount, "balance_after": after, "kind": kind, "request_id": requestID, "note": note, "created_at": created})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+}
+
 func accountFromContext(r *http.Request) accountContext {
 	return r.Context().Value(accountContextKey{}).(accountContext)
 }
