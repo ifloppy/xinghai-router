@@ -17,6 +17,7 @@ type Service struct {
 	db         *pgxpool.Pool
 	httpClient *http.Client
 	limiter    *limiter
+	scheduler  context.CancelFunc
 }
 
 func New(ctx context.Context, cfg Config) (*Service, error) {
@@ -32,7 +33,16 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Service{cfg: cfg, db: db, httpClient: &http.Client{Timeout: cfg.RequestTimeout}, limiter: newLimiter(cfg.RateLimitPerMinute)}, nil
+	s := &Service{cfg: cfg, db: db, httpClient: &http.Client{Timeout: cfg.RequestTimeout}, limiter: newLimiter(cfg.RateLimitPerMinute)}
+	schedulerCtx, cancel := context.WithCancel(context.Background())
+	s.scheduler = cancel
+	s.startHealthCheckScheduler(schedulerCtx)
+	return s, nil
 }
-func (s *Service) Close()                { s.db.Close() }
+func (s *Service) Close() {
+	if s.scheduler != nil {
+		s.scheduler()
+	}
+	s.db.Close()
+}
 func (s *Service) Handler() http.Handler { return s.routes() }

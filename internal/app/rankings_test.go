@@ -17,7 +17,7 @@ func TestRankingDuration(t *testing.T) {
 	}
 }
 func TestModelVendor(t *testing.T) {
-	for model, expected := range map[string]string{"gpt-4o": "OpenAI", "claude-3": "Anthropic", "gemini-2.5": "Google", "qwen-max": "Alibaba", "custom": "其他"} {
+	for model, expected := range map[string]string{"kimi-k3": "其他", "claude-3": "Anthropic", "gemini-2.5": "Google", "qwen-max": "Alibaba", "custom": "其他"} {
 		if actual := modelVendor(model); actual != expected {
 			t.Errorf("modelVendor(%q) = %q, want %q", model, actual, expected)
 		}

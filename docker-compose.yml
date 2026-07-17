@@ -1,14 +1,81 @@
 services:
+  router:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: router
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://router:${POSTGRES_PASSWORD:-router-change-me}@postgres:5432/router?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      # Replace this value in .env before using an existing database.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-change-this-encryption-key-before-production-2026}
+      LISTEN_ADDR: :8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8080"
+    ports:
+      - "${ROUTER_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://router:8080
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      router:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: router
       POSTGRES_USER: router
-      POSTGRES_PASSWORD: router
-    ports: ["5432:5432"]
-    volumes: [postgres-data:/var/lib/postgresql/data]
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-router-change-me}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U router -d router"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   redis:
     image: redis:7-alpine
-    ports: ["6379:6379"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
 volumes:
   postgres-data:
+  redis-data:

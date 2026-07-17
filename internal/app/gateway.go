@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -91,9 +92,19 @@ func (s *Service) proxyChatCompletions(w http.ResponseWriter, r *http.Request, b
 		writeError(w, 503, "model_unavailable", "no enabled channel supports this model")
 		return
 	}
+	reliability := s.reliabilitySettings(r.Context())
+	maxAttempts := reliability.RetryCount + 1
+	if maxAttempts > len(channels) {
+		maxAttempts = len(channels)
+	}
 	var resp *http.Response
 	var ch channel
-	for attempt, candidate := range channels {
+	attempts := 0
+	for _, candidate := range channels {
+		if attempts >= maxAttempts {
+			break
+		}
+		attempts++
 		ch = candidate
 		upstreamURL := ch.baseURL + "/v1/chat/completions"
 		upstreamBody := body
@@ -124,14 +135,24 @@ func (s *Service) proxyChatCompletions(w http.ResponseWriter, r *http.Request, b
 		upstreamReq.Header.Set("Content-Type", "application/json")
 		upstreamReq.Header.Set("Accept", map[bool]string{true: "text/event-stream", false: "application/json"}[stream])
 		resp, err = s.httpClient.Do(upstreamReq)
-		if err == nil && !retryableStatus(resp.StatusCode) {
+		if err == nil && !reliability.retryable(resp.StatusCode) {
 			break
 		}
-		s.channelFailed(r, ch.id, "upstream_unreachable")
-		if resp != nil && attempt < len(channels)-1 {
+		failureReason := "upstream_unreachable"
+		if err == nil {
+			failureReason = "upstream_status_" + strconv.Itoa(resp.StatusCode)
+			// Apply auto-disable rules to the upstream error body before retrying.
+			bodyPeek, readErr := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
 			resp.Body.Close()
+			if readErr == nil {
+				if reliability.autoDisableStatus(resp.StatusCode) || reliability.autoDisableKeyword(string(bodyPeek)) {
+					s.autoDisableChannel(r.Context(), ch.id, failureReason)
+				}
+			}
+			resp = nil
 		}
-		if attempt == len(channels)-1 {
+		s.channelFailed(r, ch.id, failureReason)
+		if attempts >= maxAttempts {
 			break
 		}
 	}
@@ -384,7 +405,7 @@ func (s *Service) testFailedChannel(id string) {
 }
 
 func (s *Service) disableFailedChannel(ctx context.Context, id, reason string) {
-	result, err := s.db.Exec(ctx, `update channels set enabled=false,last_error=$1,last_checked_at=now(),updated_at=now() where id=$2 and enabled and failure_count>=3`, reason, id)
+	result, err := s.db.Exec(ctx, `update channels set enabled=false,auto_disabled=true,disabled_reason=$1,last_error=$1,last_checked_at=now(),updated_at=now() where id=$2 and enabled and failure_count>=3`, reason, id)
 	if err != nil || result.RowsAffected() != 1 {
 		return
 	}
@@ -393,7 +414,8 @@ func (s *Service) disableFailedChannel(ctx context.Context, id, reason string) {
 	_, _ = s.db.Exec(ctx, `insert into audit_logs(id,action,actor,entity_type,entity_id,details,request_method,request_path) values($1,'channel.auto_disabled','system','channel',$2,$3,'SYSTEM','/system/channel-test')`, auditID, id, details)
 }
 func retryableStatus(status int) bool {
-	return status == 408 || status == 425 || status == 429 || status >= 500
+	settings := defaultReliabilitySettings()
+	return settings.retryable(status)
 }
 func (s *Service) streamResponse(w http.ResponseWriter, resp *http.Response) {
 	flusher, ok := w.(http.Flusher)

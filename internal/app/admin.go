@@ -1095,7 +1095,7 @@ func (s *Service) updateChannel(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 func (s *Service) listChannels(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `select c.id,c.name,c.base_url,c.models,c.enabled,c.priority,c.created_at,c.updated_at,coalesce((select array_agg(cg.group_id order by cg.group_id) from channel_groups cg where cg.channel_id=c.id), '{}'),c.provider from channels c order by c.priority,c.id`)
+	rows, err := s.db.Query(r.Context(), `select c.id,c.name,c.base_url,c.models,c.enabled,c.auto_disabled,c.disabled_reason,c.priority,c.created_at,c.updated_at,coalesce((select array_agg(cg.group_id order by cg.group_id) from channel_groups cg where cg.channel_id=c.id), '{}'),c.provider from channels c order by c.priority,c.id`)
 	if err != nil {
 		writeError(w, 500, "internal_error", "query failed")
 		return
@@ -1105,17 +1105,18 @@ func (s *Service) listChannels(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, name, base string
 		var models []byte
-		var enabled bool
+		var enabled, autoDisabled bool
+		var disabledReason string
 		var priority int
 		var created, updated any
 		var groups []string
 		var provider string
-		if rows.Scan(&id, &name, &base, &models, &enabled, &priority, &created, &updated, &groups, &provider) != nil {
+		if rows.Scan(&id, &name, &base, &models, &enabled, &autoDisabled, &disabledReason, &priority, &created, &updated, &groups, &provider) != nil {
 			continue
 		}
 		var list []string
 		json.Unmarshal(models, &list)
-		data = append(data, map[string]any{"id": id, "name": name, "base_url": base, "models": list, "provider": provider, "enabled": enabled, "priority": priority, "groups": groups, "created_at": created, "updated_at": updated})
+		data = append(data, map[string]any{"id": id, "name": name, "base_url": base, "models": list, "provider": provider, "enabled": enabled, "auto_disabled": autoDisabled, "disabled_reason": disabledReason, "priority": priority, "groups": groups, "created_at": created, "updated_at": updated})
 	}
 	writeJSON(w, 200, map[string]any{"data": data})
 }
@@ -1127,7 +1128,7 @@ func (s *Service) setChannelStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request", "enabled is required")
 		return
 	}
-	result, err := s.db.Exec(r.Context(), `update channels set enabled=$1, updated_at=now() where id=$2`, in.Enabled, r.PathValue("id"))
+	result, err := s.db.Exec(r.Context(), `update channels set enabled=$1,auto_disabled=case when $1 then false else auto_disabled end,disabled_reason=case when $1 then '' else disabled_reason end,failure_count=case when $1 then 0 else failure_count end,cooldown_until=case when $1 then null else cooldown_until end, updated_at=now() where id=$2`, in.Enabled, r.PathValue("id"))
 	if err != nil || result.RowsAffected() != 1 {
 		writeError(w, 404, "not_found", "channel not found")
 		return

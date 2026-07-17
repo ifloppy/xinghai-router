@@ -21,10 +21,10 @@ func TestSyncNewAPIPricingRejectsInvalidSourceBeforeNetworkOrDatabaseAccess(t *t
 
 func TestNewAPIPricingDecodesExpectedFields(t *testing.T) {
 	var pricing newAPIPricing
-	if err := json.Unmarshal([]byte(`{"model_name":"gpt-4o-mini","quota_type":0,"model_ratio":0.075,"completion_ratio":4,"cache_ratio":0.5}`), &pricing); err != nil {
+	if err := json.Unmarshal([]byte(`{"model_name":"kimi-k3","quota_type":0,"model_ratio":0.075,"completion_ratio":4,"cache_ratio":0.5}`), &pricing); err != nil {
 		t.Fatal(err)
 	}
-	if pricing.ModelName != "gpt-4o-mini" || pricing.ModelRatio != 0.075 || pricing.CompletionRatio != 4 || pricing.CacheRatio == nil || *pricing.CacheRatio != 0.5 {
+	if pricing.ModelName != "kimi-k3" || pricing.ModelRatio != 0.075 || pricing.CompletionRatio != 4 || pricing.CacheRatio == nil || *pricing.CacheRatio != 0.5 {
 		t.Fatalf("unexpected pricing: %+v", pricing)
 	}
 }

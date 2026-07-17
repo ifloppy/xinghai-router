@@ -9,7 +9,9 @@
 - OpenAI-compatible `GET /v1/models`、`POST /v1/chat/completions`，以及 Anthropic-compatible `POST /v1/messages`。
 - 透明 SSE、上游超时、每 Key 每分钟基础限流、请求 ID、模型别名和同优先级权重路由。
 - 对可重试上游错误自动切换备用渠道；连续失败三次的渠道冷却一分钟。管理员可在站点设置中开启故障渠道自动检测：系统会重试检测三次，全部失败后自动停用渠道。
+- “路由可靠性”分组支持独立的请求重试配置（重试次数 0-10、逗号分隔的状态码与包含性范围）、后台渠道健康检查（定时全量测试或仅被动恢复、可配置频率、渠道 ID 白名单、检查成功后自动恢复上线），以及自动禁用规则（测试失败禁用、慢响应秒数阈值、状态码和上游错误关键字匹配，关键字不区分大小写）。
 - 请求日志关联用户、Key、模型和最终渠道；非流式请求记录 token、按定价结算，并在上游调用前预留余额以避免并发透支。
+- 支持彩虹易支付兼容接口自助充值；管理员可配置平台并动态管理支付渠道，异步通知验签后幂等入账。
 
 当前限流器仍是进程内实现，水平扩容前必须替换为 Redis 的滑动窗口。流式响应透明透传；由于不同上游的 SSE 用量事件不一致，流式请求目前不结算 token 费用，仅记录请求日志，不应据此执行生产计费。
 
@@ -20,6 +22,17 @@
 3. Export the environment variables in `.env` using your shell or an environment loader.
 4. Run: `go run ./cmd/router`.
 5. Check: `curl http://localhost:8080/healthz`.
+
+## Docker deployment
+
+Copy `.env.example` to `.env`, replace `ENCRYPTION_KEY` and `POSTGRES_PASSWORD` with unique URL-safe secrets, then start the complete stack:
+
+```sh
+cp .env.example .env
+docker compose up -d --build
+```
+
+The web console is available at `http://localhost:3000`; the OpenAI/Anthropic gateway is available at `http://localhost:8080`. PostgreSQL and Redis are internal-only and persist data in the `postgres-data` and `redis-data` volumes. Migrations run automatically when the router starts. Follow startup logs with `docker compose logs -f router` and stop the stack with `docker compose down` (use `docker compose down -v` only when intentionally deleting data).
 
 ### Admin web console
 
@@ -34,6 +47,33 @@ npm run dev
 Open `http://localhost:5173/auth` and create an account or sign in with email and password. The first registered account becomes an administrator; administrators can promote users or grant individual permissions. Browser sessions are retained only in session storage. Nuxt proxies browser requests from `/api/*` to `http://127.0.0.1:8080/*`, so this development setup does not require a CORS policy. `npm run generate` emits prerendered HTML for the public home and authentication pages; deploy the Nuxt `.output` directory for the full application.
 
 The service performs migrations automatically at startup. `base_url` for a channel must be an HTTPS origin or path prefix without `/v1`; for example, `https://api.openai.com`. Loopback HTTP URLs are also accepted for local services such as Ollama, for example `http://127.0.0.1:11434`. Provider secrets are encrypted in the database using `ENCRYPTION_KEY`, so keep this value stable and securely backed up.
+
+### 易支付充值
+
+本项目使用彩虹易支付兼容的页面支付协议。在线充值是可选功能，由具有 `system.manage` 权限的管理员在控制台“支付设置”页面配置，不使用支付环境变量。管理员可以设置启用状态、易支付平台地址、控制台公网地址、商户 ID 和商户密钥；商户密钥使用 `ENCRYPTION_KEY` 加密保存，不会通过查询 API 返回。
+
+管理员还可以自行新增、修改、停用和删除支付渠道。渠道代码会原样作为易支付的 `type` 参数提交，例如可添加 `alipay / 支付宝`、`wxpay / 微信支付`，具体代码以使用的易支付平台文档为准。删除渠道不会删除已产生的支付订单。
+
+假设控制台公网地址配置为 `https://router.example.com`，易支付商户后台应允许服务端通知地址：
+
+```text
+https://router.example.com/api/payments/epay/notify
+```
+
+Nuxt 会将 `/api/*` 转发给 Go 服务。若绕过 Nuxt 直接暴露 Go 服务，则通知路径为 `/payments/epay/notify`。生产环境的平台地址和控制台公网地址必须使用 HTTPS；只有 `localhost` 和 `127.0.0.1` 可使用 HTTP。
+
+支付管理 API 为 `GET|PUT /admin/payment-settings`、`POST /admin/payment-methods`、`PUT /admin/payment-methods/{id}` 和 `DELETE /admin/payment-methods/{id}`，均要求 `system.manage` 权限。
+
+用户可在钱包页面发起充值，也可使用账户 API：
+
+```sh
+curl -X POST http://localhost:8080/account/payments \
+  -H "Authorization: Bearer $SESSION_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"amount":"10.00","type":"alipay"}'
+```
+
+响应中的 `pay_url` 用于跳转易支付收银台。可通过 `GET /account/payments` 查询最近订单，或通过 `GET /account/payments/{order_no}` 查询单笔状态。浏览器同步返回不会触发入账；只有签名、商户 ID、成功状态和订单金额均通过校验的异步通知才会入账。重复通知会返回 `success`，但不会重复增加余额。
 
 ## Administration API
 
@@ -78,7 +118,7 @@ Create an OpenAI-compatible upstream channel:
 curl -X POST http://localhost:8080/admin/channels \
   -H "Authorization: Bearer $SESSION_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"openai","base_url":"https://api.openai.com","api_key":"PROVIDER_KEY","models":["gpt-4o-mini"],"priority":100}'
+  -d '{"name":"openai","base_url":"https://api.openai.com","api_key":"PROVIDER_KEY","models":["kimi-k3-mini"],"priority":100}'
 ```
 
 创建渠道时可选 `provider`：`openai`、`ollama`、`kimi`、`opencode_go` 或 `anthropic`。Ollama、Kimi 和 OpenCode Go 使用各自的 OpenAI-compatible 接口；Anthropic 渠道会转换为 Messages API。`base_url` 不要包含末尾的 `/v1`：
@@ -104,7 +144,7 @@ Set a model price (currency units per million tokens), then top up or adjust a u
 ```sh
 curl -X POST http://localhost:8080/admin/pricing \
   -H "Authorization: Bearer $SESSION_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"model":"gpt-4o-mini","input_per_million":0.15,"cached_input_per_million":0.075,"output_per_million":0.60,"multiplier":1}'
+  -d '{"model":"kimi-k3-mini","input_per_million":0.15,"cached_input_per_million":0.075,"output_per_million":0.60,"multiplier":1}'
 
 # 从 NewAPI 同步 token 模型定价；price_per_quota_unit 是 quota_per_unit 配额对应的本地货币价格
 curl -X POST http://localhost:8080/admin/pricing/newapi/sync \
@@ -123,7 +163,7 @@ Create a public-model alias for a specific channel, or apply a request quota to 
 ```sh
 curl -X POST http://localhost:8080/admin/model-routes \
   -H "Authorization: Bearer $SESSION_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"public_model":"gpt-4o","upstream_model":"provider-gpt-4o","channel_id":"CHANNEL_UUID","priority":10,"weight":100}'
+  -d '{"public_model":"kimi-k3","upstream_model":"provider-kimi-k3","channel_id":"CHANNEL_UUID","priority":10,"weight":100}'
 
 curl -X POST http://localhost:8080/admin/quota-limits \
   -H "Authorization: Bearer $SESSION_TOKEN" -H 'Content-Type: application/json' \
@@ -140,7 +180,7 @@ curl http://localhost:8080/v1/models -H "Authorization: Bearer $XINGHAI_API_KEY"
 curl -N http://localhost:8080/v1/chat/completions \
   -H "Authorization: Bearer $XINGHAI_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}],"stream":true}'
+  -d '{"model":"kimi-k3-mini","messages":[{"role":"user","content":"Hello"}],"stream":true}'
 ```
 
 Anthropic 客户端（包括将 OpenCode 的 Anthropic provider 指向本服务）可使用 `x-api-key` 调用 `/v1/messages`。请求、非流式响应、SSE 和工具调用会在 Anthropic Messages 与上游 OpenAI Chat Completions 格式之间转换：
@@ -169,7 +209,7 @@ OpenCode 配置示例：
 }
 ```
 
-The router selects an enabled channel advertising the requested model. It tries the lowest numeric priority first, distributes equal-priority traffic by weight, and retries a different eligible channel for connection errors, `408`, `425`, `429`, and `5xx` responses.
+The router selects an enabled channel advertising the requested model. It tries the lowest numeric priority first, distributes equal-priority traffic by weight, and retries a different eligible channel for connection errors and responses matching the configured retry status codes (by default every status except `2xx`, `408`, and `504`, up to 3 retries). Upstream errors matching the configured auto-disable status codes or keywords disable the channel immediately, and the optional background health check probes channels on a schedule (`scheduled_all`) or only after automatic disabling (`passive_recovery`), bringing recovered channels back online when configured. Manage these options through `GET|PUT /admin/reliability-settings` (`system.manage`).
 
 ## Verify
 
