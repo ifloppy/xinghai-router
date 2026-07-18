@@ -2140,7 +2140,7 @@ td code {
   border: 1px solid hsl(var(--border)); border-radius: .75rem; background: hsl(var(--card));
   transition: background var(--duration-fast);
 }
-@media (min-width: 640px) { .msq-card { padding: 20px; } }
+@media (min-width: 640px) { .msq-card { padding: 14px; } }
 .msq-card:hover { background: hsl(var(--muted) / .2); }
 .msq-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .msq-card-id { display: flex; min-width: 0; align-items: flex-start; gap: 10px; }
@@ -2178,15 +2178,15 @@ td code {
 }
 .msq-copy-btn.bordered { gap: 5px; padding: 5px 9px; font-size: 11px; }
 .msq-card-desc {
-  flex: 1; overflow: hidden; margin: 8px 0 0;
-  color: hsl(var(--muted-foreground)); font-size: 12.5px; line-height: 1.6;
+  overflow: hidden; margin: 6px 0 0;
+  color: hsl(var(--muted-foreground)); font-size: 12.5px; line-height: 1.5;
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
 }
-@media (min-width: 640px) { .msq-card-desc { min-height: 2.5rem; margin-top: 16px; -webkit-line-clamp: 2; } }
+@media (min-width: 640px) { .msq-card-desc { margin-top: 10px; -webkit-line-clamp: 2; } }
 .msq-card-footer {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; margin-top: 8px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; margin-top: 6px;
 }
-@media (min-width: 640px) { .msq-card-footer { margin-top: 16px; } }
+@media (min-width: 640px) { .msq-card-footer { margin-top: 10px; } }
 .msq-card-footer-left { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .msq-group-name { overflow: hidden; color: hsl(var(--muted-foreground)); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .msq-card-footer-bottom { grid-column: 1 / -1; display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
@@ -2418,7 +2418,7 @@ td code {
 .login-aside {
   position: relative; display: flex; align-items: center; padding: 52px 44px;
   color: hsl(var(--primary-foreground));
-  background: linear-gradient(160deg, hsl(222 84% 56%) 0%, hsl(243 76% 55%) 52%, hsl(262 72% 50%) 100%);
+  background: linear-gradient(160deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 52%, hsl(var(--primary) / 0.7) 100%);
 }
 .login-aside-glow {
   position: absolute; inset: 0; pointer-events: none;
@@ -2429,8 +2429,8 @@ td code {
 .login-aside-inner { position: relative; display: flex; flex-direction: column; gap: 16px; }
 .login-aside-inner .brand-mark {
   display: grid; width: 52px; height: 52px; place-items: center;
-  border-radius: 14px; color: hsl(243 76% 55%); background: hsl(0 0% 100% / .95);
-  box-shadow: 0 8px 24px hsl(240 60% 20% / .35);
+  border-radius: 14px; color: hsl(var(--primary)); background: hsl(var(--primary-foreground) / .95);
+  box-shadow: 0 8px 24px hsl(var(--primary) / .35);
 }
 .login-aside-inner h2 { margin: 6px 0 0; font-family: var(--font-display); font-size: 30px; font-weight: 800; letter-spacing: -.03em; line-height: 1.2; }
 .login-aside-inner > p { margin: 0; color: hsl(0 0% 100% / .82); font-size: 13.5px; line-height: 1.75; }
@@ -2438,7 +2438,7 @@ td code {
 .login-aside-inner li { display: flex; align-items: center; gap: 10px; color: hsl(0 0% 100% / .92); font-size: 13px; font-weight: 500; }
 .login-aside-inner li i {
   display: grid; flex: none; width: 26px; height: 26px; place-items: center;
-  border-radius: 8px; background: hsl(0 0% 100% / .16);
+  border-radius: 8px; background: hsl(var(--primary-foreground) / .16);
 }
 .login-pane { display: flex; flex-direction: column; justify-content: center; padding: 48px 44px; }
 .login-pane h1 { margin: 0; font-size: 26px; letter-spacing: -.04em; color: hsl(var(--foreground)); }
