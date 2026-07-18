@@ -22,9 +22,24 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Name     string `json:"name"`
 		Password string `json:"password"`
+		Code     string `json:"code"`
+		geetestPayload
 	}
 	if decode(r, &in) != nil || !validAccountInput(in.Email, in.Name, in.Password) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "a valid email, name, and password of at least 8 characters are required")
+		return
+	}
+	if s.loadSystemConfig(r.Context()).emailVerificationEnabled() {
+		if strings.TrimSpace(in.Code) == "" {
+			writeError(w, http.StatusBadRequest, "code_required", "the email verification code is required")
+			return
+		}
+		if err := s.verifyEmailCode(r.Context(), in.Email, strings.TrimSpace(in.Code)); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_code", err.Error())
+			return
+		}
+	} else if err := s.verifyGeetest(r.Context(), in.geetestPayload); err != nil {
+		writeError(w, http.StatusForbidden, "captcha_failed", err.Error())
 		return
 	}
 	email := strings.ToLower(strings.TrimSpace(in.Email))
@@ -78,9 +93,14 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		geetestPayload
 	}
 	if decode(r, &in) != nil || strings.TrimSpace(in.Email) == "" || in.Password == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "email and password are required")
+		return
+	}
+	if err := s.verifyGeetest(r.Context(), in.geetestPayload); err != nil {
+		writeError(w, http.StatusForbidden, "captcha_failed", err.Error())
 		return
 	}
 	var userID, passwordHash string
@@ -103,8 +123,9 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 func (s *Service) accountMe(w http.ResponseWriter, r *http.Request) {
 	account := r.Context().Value(accountContextKey{}).(accountContext)
 	var email, name, role, avatarURL string
+	var leaderboardOptIn, leaderboardMaskName bool
 	var balance, reserved any
-	err := s.db.QueryRow(r.Context(), `select u.email,u.name,u.role,u.avatar_url,coalesce(w.balance,0),coalesce(w.reserved,0) from users u left join user_wallets w on w.user_id=u.id where u.id=$1`, account.userID).Scan(&email, &name, &role, &avatarURL, &balance, &reserved)
+	err := s.db.QueryRow(r.Context(), `select u.email,u.name,u.role,u.avatar_url,u.leaderboard_opt_in,u.leaderboard_mask_name,coalesce(w.balance,0),coalesce(w.reserved,0) from users u left join user_wallets w on w.user_id=u.id where u.id=$1`, account.userID).Scan(&email, &name, &role, &avatarURL, &leaderboardOptIn, &leaderboardMaskName, &balance, &reserved)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "could not load account")
 		return
@@ -114,7 +135,33 @@ func (s *Service) accountMe(w http.ResponseWriter, r *http.Request) {
 		permissions = append(permissions, permission)
 	}
 	sort.Strings(permissions)
-	writeJSON(w, http.StatusOK, map[string]any{"id": account.userID, "email": email, "name": name, "role": role, "avatar_url": avatarURL, "permissions": permissions, "balance": balance, "reserved": reserved})
+	writeJSON(w, http.StatusOK, map[string]any{"id": account.userID, "email": email, "name": name, "role": role, "avatar_url": avatarURL, "permissions": permissions, "balance": balance, "reserved": reserved, "leaderboard_opt_in": leaderboardOptIn, "leaderboard_mask_name": leaderboardMaskName})
+}
+
+func (s *Service) updateAccountPreferences(w http.ResponseWriter, r *http.Request) {
+	account := accountFromContext(r)
+	var in struct {
+		LeaderboardOptIn    *bool `json:"leaderboard_opt_in"`
+		LeaderboardMaskName *bool `json:"leaderboard_mask_name"`
+	}
+	if decode(r, &in) != nil || (in.LeaderboardOptIn == nil && in.LeaderboardMaskName == nil) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "nothing to update")
+		return
+	}
+	if in.LeaderboardOptIn != nil {
+		if _, err := s.db.Exec(r.Context(), `update users set leaderboard_opt_in=$1 where id=$2`, *in.LeaderboardOptIn, account.userID); err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "could not save preferences")
+			return
+		}
+	}
+	if in.LeaderboardMaskName != nil {
+		if _, err := s.db.Exec(r.Context(), `update users set leaderboard_mask_name=$1 where id=$2`, *in.LeaderboardMaskName, account.userID); err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "could not save preferences")
+			return
+		}
+	}
+	s.audit(r, "account.preferences_updated", "user", account.userID, map[string]any{"leaderboard_opt_in": in.LeaderboardOptIn, "leaderboard_mask_name": in.LeaderboardMaskName})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Service) updateAccountProfile(w http.ResponseWriter, r *http.Request) {
@@ -401,4 +448,9 @@ func (s *Service) createSession(w http.ResponseWriter, r *http.Request, userID s
 func validAccountInput(email, name, password string) bool {
 	parsed, err := mail.ParseAddress(strings.TrimSpace(email))
 	return err == nil && parsed.Address == strings.TrimSpace(email) && len(strings.TrimSpace(name)) > 0 && len(strings.TrimSpace(name)) <= 100 && len(password) >= 8 && len(password) <= 128
+}
+
+func validEmail(email string) bool {
+	parsed, err := mail.ParseAddress(strings.TrimSpace(email))
+	return err == nil && parsed.Address == strings.TrimSpace(email)
 }

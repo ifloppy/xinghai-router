@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowLeft, ArrowUp, Bot, RefreshCw, Trophy } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, RefreshCw, Trophy } from 'lucide-vue-next'
 import { onMounted, ref } from 'vue'
 import type { Rankings, SiteSettings } from '~/src/api'
 
@@ -57,10 +57,7 @@ onMounted(() => {
 
 <template>
   <main class="rankings-page">
-     <nav class="rankings-nav">
-       <a class="landing-logo" href="/"><span class="brand-mark small"><Bot :size="19" /></span><span>{{ siteSettings.name }}</span></a>
-       <div><a class="back-link" href="/"><ArrowLeft :size="14" />{{ t('backHome') }}</a><ThemeCustomizer :locale="locale" /><select v-model="locale" class="language-select" :aria-label="t('switchLanguage')"><option value="zh-CN">{{ t('chinese') }}</option><option value="en-US">{{ t('english') }}</option></select><a class="button primary" href="/auth">{{ t('console') }}</a></div>
-    </nav>
+     <PublicTopbar />
 
     <section class="rankings-shell">
       <header class="rankings-hero">

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Bot, ChevronLeft } from 'lucide-vue-next'
-
 const props = defineProps<{ kind: 'terms' | 'privacy' }>()
 const { locale, t, toggleLocale, initializeLocale } = useI18n()
 
@@ -15,14 +13,7 @@ onMounted(() => {
 
 <template>
   <main class="legal-shell">
-    <nav class="legal-nav">
-      <a class="landing-logo" href="/"><span class="brand-mark small"><Bot :size="19" /></span><span>Xinghai Router</span></a>
-      <div class="legal-nav-actions">
-        <ThemeCustomizer :locale="locale" />
-        <button class="language-toggle" :aria-label="t('switchLanguage')" @click="toggleLocale">{{ locale === 'zh-CN' ? t('english') : t('chinese') }}</button>
-        <a class="button ghost" href="/"><ChevronLeft :size="15" />{{ t('backHome') }}</a>
-      </div>
-    </nav>
+    <PublicTopbar />
 
     <article class="legal-document">
       <header class="legal-header">

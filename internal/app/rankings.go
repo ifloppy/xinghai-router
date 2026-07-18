@@ -3,6 +3,7 @@ package app
 import (
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -34,6 +35,26 @@ type rankingMover struct {
 type rankingTotals struct {
 	model             string
 	current, previous int64
+}
+type userRanking struct {
+	Rank     int     `json:"rank"`
+	Name     string  `json:"name"`
+	Tokens   int64   `json:"total_tokens"`
+	Cost     float64 `json:"total_cost"`
+	Share    float64 `json:"share"`
+	Growth   float64 `json:"growth_pct"`
+	Requests int64   `json:"requests"`
+	TopModel string  `json:"top_model"`
+}
+
+// maskName keeps only the first visible character of a display name so the
+// public leaderboard does not expose full user identities.
+func maskName(name string) string {
+	runes := []rune(strings.TrimSpace(name))
+	if len(runes) == 0 {
+		return "***"
+	}
+	return string(runes[0]) + "***"
 }
 
 // modelVendor preserves the default labels used by older callers and tests.
@@ -184,5 +205,82 @@ func (s *Service) rankings(w http.ResponseWriter, r *http.Request) {
 	if len(droppers) > 6 {
 		droppers = droppers[:6]
 	}
-	writeJSON(w, 200, map[string]any{"period": period, "models": models, "vendors": vendors, "top_movers": movers, "top_droppers": droppers, "total_tokens": allTokens, "updated_at": now})
+	users := s.userLeaderboard(r, start, previousStart, now, allTokens)
+	writeJSON(w, 200, map[string]any{"period": period, "models": models, "vendors": vendors, "top_movers": movers, "top_droppers": droppers, "users": users, "total_tokens": allTokens, "updated_at": now})
+}
+
+// userLeaderboard ranks users by token consumption within the current period.
+// Display names are masked before they leave the server.
+func (s *Service) userLeaderboard(r *http.Request, start, previousStart, now time.Time, allTokens int64) []userRanking {
+	rows, err := s.db.Query(r.Context(), `select ur.user_id::text, u.name, u.leaderboard_mask_name, ur.model,
+		coalesce(sum(ur.prompt_tokens+ur.completion_tokens) filter(where ur.created_at >= $1),0),
+		coalesce(sum(ur.prompt_tokens+ur.completion_tokens) filter(where ur.created_at < $1),0),
+		coalesce(sum(ur.cost) filter(where ur.created_at >= $1),0)::float8,
+		count(*) filter(where ur.created_at >= $1)
+		from usage_records ur join users u on u.id = ur.user_id
+		where u.leaderboard_opt_in and ur.created_at >= $2 and ur.created_at < $3
+		group by ur.user_id, u.name, u.leaderboard_mask_name, ur.model`, start, previousStart, now)
+	if err != nil {
+		return []userRanking{}
+	}
+	defer rows.Close()
+	type userTotals struct {
+		name                   string
+		mask                   bool
+		current, previous      int64
+		cost                   float64
+		requests               int64
+		modelTokens            map[string]int64
+	}
+	byUser := map[string]*userTotals{}
+	for rows.Next() {
+		var userID, name, model string
+		var mask bool
+		var current, previous, requests int64
+		var cost float64
+		if rows.Scan(&userID, &name, &mask, &model, &current, &previous, &cost, &requests) != nil {
+			continue
+		}
+		entry := byUser[userID]
+		if entry == nil {
+			entry = &userTotals{name: name, mask: mask, modelTokens: map[string]int64{}}
+			byUser[userID] = entry
+		}
+		entry.current += current
+		entry.previous += previous
+		entry.cost += cost
+		entry.requests += requests
+		if current > 0 {
+			entry.modelTokens[model] += current
+		}
+	}
+	users := []userRanking{}
+	for _, entry := range byUser {
+		if entry.current <= 0 {
+			continue
+		}
+		top, topTokens := "", int64(0)
+		for model, tokens := range entry.modelTokens {
+			if tokens > topTokens {
+				top, topTokens = model, tokens
+			}
+		}
+		share := 0.0
+		if allTokens > 0 {
+			share = float64(entry.current) / float64(allTokens)
+		}
+		name := entry.name
+		if entry.mask {
+			name = maskName(name)
+		}
+		users = append(users, userRanking{Name: name, Tokens: entry.current, Cost: entry.cost, Share: share, Growth: growthPercent(entry.current, entry.previous), Requests: entry.requests, TopModel: top})
+	}
+	sort.Slice(users, func(i, j int) bool { return users[i].Tokens > users[j].Tokens })
+	if len(users) > 20 {
+		users = users[:20]
+	}
+	for i := range users {
+		users[i].Rank = i + 1
+	}
+	return users
 }

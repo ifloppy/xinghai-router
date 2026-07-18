@@ -8,9 +8,11 @@ import (
 )
 
 type modelProvider struct {
-	ID, Name, Slug string
-	Prefixes       []string
-	Priority       int
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Slug     string   `json:"slug"`
+	Prefixes []string `json:"prefixes"`
+	Priority int      `json:"priority"`
 }
 
 func (s *Service) providers(r *http.Request) []modelProvider {
@@ -52,9 +54,11 @@ func (s *Service) listProviders(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) saveProvider(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name, Slug string
-		Prefixes   []string `json:"prefixes"`
-		Priority   int      `json:"priority"`
+		ID       string   `json:"id"`
+		Name     string   `json:"name"`
+		Slug     string   `json:"slug"`
+		Prefixes []string `json:"prefixes"`
+		Priority int      `json:"priority"`
 	}
 	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.Slug) == "" || len(in.Prefixes) == 0 {
 		writeError(w, 400, "invalid_request", "name, slug, and prefixes are required")
@@ -72,6 +76,21 @@ func (s *Service) saveProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prefixes, _ := json.Marshal(in.Prefixes)
+	if strings.TrimSpace(in.ID) != "" {
+		result, err := s.db.Exec(r.Context(), `update model_providers set name=$1,slug=$2,prefixes=$3,priority=$4,updated_at=now() where id=$5`, strings.TrimSpace(in.Name), strings.TrimSpace(in.Slug), prefixes, in.Priority, strings.TrimSpace(in.ID))
+		if err != nil {
+			writeError(w, 409, "conflict", "provider name or slug already exists")
+			return
+		}
+		if result.RowsAffected() != 1 {
+			writeError(w, 404, "not_found", "provider not found")
+			return
+		}
+		item := modelProvider{ID: strings.TrimSpace(in.ID), Name: strings.TrimSpace(in.Name), Slug: strings.TrimSpace(in.Slug), Prefixes: in.Prefixes, Priority: in.Priority}
+		s.audit(r, "provider.saved", "model_provider", item.ID, map[string]any{"name": item.Name})
+		writeJSON(w, 200, item)
+		return
+	}
 	var item modelProvider
 	var raw []byte
 	err := s.db.QueryRow(r.Context(), `insert into model_providers(name,slug,prefixes,priority,updated_at) values($1,$2,$3,$4,now()) on conflict (slug) do update set name=excluded.name,prefixes=excluded.prefixes,priority=excluded.priority,updated_at=now() returning id::text,name,slug,prefixes,priority`, strings.TrimSpace(in.Name), strings.TrimSpace(in.Slug), prefixes, in.Priority).Scan(&item.ID, &item.Name, &item.Slug, &raw, &item.Priority)
