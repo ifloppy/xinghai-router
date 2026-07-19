@@ -320,39 +320,58 @@ func (s *Service) epayNotify(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 	var id, userID, amount, status string
 	err = tx.QueryRow(r.Context(), `select id,user_id,amount::text,status from payment_orders where order_no=$1 and provider='epay' for update`, r.Form.Get("out_trade_no")).Scan(&id, &userID, &amount, &status)
-	if err != nil || amount != notifiedAmount {
-		http.Error(w, "fail", http.StatusBadRequest)
-		return
-	}
-	if status == "paid" {
+	if err == nil {
+		if amount != notifiedAmount {
+			http.Error(w, "fail", http.StatusBadRequest)
+			return
+		}
+		if status == "paid" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("success"))
+			return
+		}
+		if status != "pending" {
+			http.Error(w, "fail", http.StatusConflict)
+			return
+		}
+		if _, err = tx.Exec(r.Context(), `update payment_orders set status='paid',provider_trade_no=$1,paid_at=now(),updated_at=now() where id=$2`, r.Form.Get("trade_no"), id); err != nil {
+			http.Error(w, "fail", http.StatusConflict)
+			return
+		}
+		if _, err = tx.Exec(r.Context(), `insert into user_wallets(user_id) values($1) on conflict do nothing`, userID); err != nil {
+			http.Error(w, "fail", http.StatusInternalServerError)
+			return
+		}
+		var balance string
+		if err = tx.QueryRow(r.Context(), `update user_wallets set balance=balance+$1::numeric,updated_at=now() where user_id=$2 returning balance::text`, amount, userID).Scan(&balance); err != nil {
+			http.Error(w, "fail", http.StatusInternalServerError)
+			return
+		}
+		ledgerID, err := randomID()
+		if err != nil {
+			http.Error(w, "fail", http.StatusInternalServerError)
+			return
+		}
+		if _, err = tx.Exec(r.Context(), `insert into wallet_ledger(id,user_id,amount,balance_after,kind,request_id,note) values($1,$2,$3,$4,'topup',$5,$6)`, ledgerID, userID, amount, balance, r.Form.Get("out_trade_no"), "Epay top-up"); err != nil {
+			http.Error(w, "fail", http.StatusInternalServerError)
+			return
+		}
+		if err = tx.Commit(r.Context()); err != nil {
+			http.Error(w, "fail", http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("success"))
 		return
 	}
-	if status != "pending" {
-		http.Error(w, "fail", http.StatusConflict)
-		return
-	}
-	if _, err = tx.Exec(r.Context(), `update payment_orders set status='paid',provider_trade_no=$1,paid_at=now(),updated_at=now() where id=$2`, r.Form.Get("trade_no"), id); err != nil {
-		http.Error(w, "fail", http.StatusConflict)
-		return
-	}
-	if _, err = tx.Exec(r.Context(), `insert into user_wallets(user_id) values($1) on conflict do nothing`, userID); err != nil {
-		http.Error(w, "fail", http.StatusInternalServerError)
-		return
-	}
-	var balance string
-	if err = tx.QueryRow(r.Context(), `update user_wallets set balance=balance+$1::numeric,updated_at=now() where user_id=$2 returning balance::text`, amount, userID).Scan(&balance); err != nil {
-		http.Error(w, "fail", http.StatusInternalServerError)
-		return
-	}
-	ledgerID, err := randomID()
+	// Otherwise treat as a subscription order activation.
+	activated, err := s.activateSubscriptionOrderTx(r.Context(), tx, r.Form.Get("out_trade_no"), r.Form.Get("trade_no"), notifiedAmount)
 	if err != nil {
-		http.Error(w, "fail", http.StatusInternalServerError)
+		http.Error(w, "fail", http.StatusConflict)
 		return
 	}
-	if _, err = tx.Exec(r.Context(), `insert into wallet_ledger(id,user_id,amount,balance_after,kind,request_id,note) values($1,$2,$3,$4,'topup',$5,$6)`, ledgerID, userID, amount, balance, r.Form.Get("out_trade_no"), "Epay top-up"); err != nil {
-		http.Error(w, "fail", http.StatusInternalServerError)
+	if !activated {
+		http.Error(w, "fail", http.StatusBadRequest)
 		return
 	}
 	if err = tx.Commit(r.Context()); err != nil {

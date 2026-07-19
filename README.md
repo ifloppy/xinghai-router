@@ -12,6 +12,7 @@
 - “路由可靠性”分组支持独立的请求重试配置（重试次数 0-10、逗号分隔的状态码与包含性范围）、后台渠道健康检查（定时全量测试或仅被动恢复、可配置频率、渠道 ID 白名单、检查成功后自动恢复上线），以及自动禁用规则（测试失败禁用、慢响应秒数阈值、状态码和上游错误关键字匹配，关键字不区分大小写）。
 - 请求日志关联用户、Key、模型和最终渠道；非流式请求记录 token、按定价结算，并在上游调用前预留余额以避免并发透支。
 - 支持彩虹易支付兼容接口自助充值；管理员可配置平台并动态管理支付渠道，异步通知验签后幂等入账。
+- 套餐订阅系统：管理员可定义按月/年计费的套餐，支持赠送额度、模型白名单与每周期上限；订阅支付复用易支付，激活后自动发放额度并加入分组，订阅期内对白名单内模型的调用跳过钱包扣费。
 
 当前限流器仍是进程内实现，水平扩容前必须替换为 Redis 的滑动窗口。流式响应透明透传；由于不同上游的 SSE 用量事件不一致，流式请求目前不结算 token 费用，仅记录请求日志，不应据此执行生产计费。
 
@@ -74,6 +75,49 @@ curl -X POST http://localhost:8080/account/payments \
 ```
 
 响应中的 `pay_url` 用于跳转易支付收银台。可通过 `GET /account/payments` 查询最近订单，或通过 `GET /account/payments/{order_no}` 查询单笔状态。浏览器同步返回不会触发入账；只有签名、商户 ID、成功状态和订单金额均通过校验的异步通知才会入账。重复通知会返回 `success`，但不会重复增加余额。
+
+## 订阅系统
+
+管理员可在“订阅套餐”页面定义按月或按年计费的套餐：套餐价格、计费周期、赠送额度（订阅激活时一次性充值进用户钱包，可叠加现有按量计费）、自动加入分组、模型白名单（留空表示订阅期内可调用全部模型）、每周期最大请求数/Token 数，以及对外展示顺序与启用状态。
+
+用户在“订阅”页面选择套餐后跳转易支付收银台，异步通知通过签名、商户 ID、金额校验后激活订阅：设置当前周期起止时间（月套餐 1 个月、年套餐 1 年），将赠送额度充值进钱包并写入账本（`subscription_topup`），如套餐绑定了分组则将用户加入该分组；同一订单重复通知幂等返回 `success` 但不重复发放。订阅期内，对套餐白名单内（或白名单为空时的全部模型）的调用会跳过钱包结算（订阅期内免费），并在达到套餐每周期上限时回退到按量计费。
+
+订阅相关 API：
+
+```sh
+# 浏览对外可见的套餐（无需登录）
+curl http://localhost:8080/subscription-plans
+
+# 用户订阅当前套餐
+curl -X POST http://localhost:8080/account/subscriptions \
+  -H "Authorization: Bearer $SESSION_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"plan_id":"PLAN_UUID","payment_type":"alipay","auto_renew":false}'
+
+# 查询我的订阅与订单
+curl http://localhost:8080/account/subscriptions -H "Authorization: Bearer $SESSION_TOKEN"
+curl http://localhost:8080/account/subscription-orders -H "Authorization: Bearer $SESSION_TOKEN"
+# 取消订阅（不再续费，当前周期内仍有效）
+curl -X POST http://localhost:8080/account/subscriptions/{id}/cancel -H "Authorization: Bearer $SESSION_TOKEN"
+```
+
+管理员 API：`GET /admin/subscription-plans`、`POST /admin/subscription-plans`、`PUT /admin/subscription-plans/{id}`、`DELETE /admin/subscription-plans/{id}`（`system.manage`），以及 `GET /admin/subscriptions`（`users.read`）查看全站订阅。套餐请求体示例：
+
+```json
+{
+  "name": "标准月度",
+  "description": "适合个人开发者",
+  "price": "29.00",
+  "currency": "CNY",
+  "billing_period": "month",
+  "credit_amount": "30",
+  "group_id": "",
+  "model_whitelist": [],
+  "max_requests_per_period": null,
+  "max_tokens_per_period": null,
+  "sort_order": 10,
+  "enabled": true
+}
+```
 
 ## Administration API
 

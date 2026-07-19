@@ -80,10 +80,15 @@ func (s *Service) proxyChatCompletions(w http.ResponseWriter, r *http.Request, b
 		writeError(w, 429, "quota_exceeded", "request quota exceeded")
 		return
 	}
+	subscriptionAccess := s.subscriptionCoversModel(r.Context(), key.userID, model)
 	reserved, err := s.reserveUsage(r, key, model, body)
 	if err != nil {
-		writeError(w, 402, "insufficient_quota", "insufficient balance for this request")
-		return
+		if subscriptionAccess {
+			reserved = reservation{}
+		} else {
+			writeError(w, 402, "insufficient_quota", "insufficient balance for this request")
+			return
+		}
 	}
 	defer func() { s.releaseReservation(r, key, reserved, model) }()
 	channels, err := s.channelsForModel(r, model)
@@ -189,7 +194,9 @@ func (s *Service) proxyChatCompletions(w http.ResponseWriter, r *http.Request, b
 	prompt, completion, total := usage(responseBody)
 	s.logRequest(r, key, ch.id, model, resp.StatusCode, prompt, completion, total, time.Since(started), errorCode(resp.StatusCode))
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		s.settleUsage(r, key, reserved, model, prompt, completion)
+		if !subscriptionAccess {
+			s.settleUsage(r, key, reserved, model, prompt, completion)
+		}
 		s.channelSucceeded(r, ch.id)
 		if transform != nil {
 			responseBody, err = transform(responseBody)

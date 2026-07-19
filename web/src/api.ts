@@ -23,6 +23,92 @@ export interface SiteSettings { name: string; icon_url: string; auto_disable_fai
 export interface AdminSiteSettings { name: string; icon_url: string; auto_disable_failed_channels: boolean; geetest_captcha_id: string; has_geetest_captcha_key: boolean; smtp_host: string; smtp_port: string; smtp_username: string; has_smtp_password: boolean; smtp_from: string }
 export interface ReliabilitySettings { retry_count: number; retry_status_codes: string; health_check_mode: 'off' | 'scheduled_all' | 'passive_recovery'; health_check_interval_minutes: number; health_check_auto_recover: boolean; health_check_channel_ids: string; auto_disable_on_test_failure: boolean; auto_disable_slow_seconds: number; auto_disable_status_codes: string; auto_disable_keywords: string }
 
+export interface SubscriptionPlan {
+  id: string
+  name: string
+  description: string
+  price: string
+  currency: string
+  billing_period: 'month' | 'year'
+  credit_amount: string
+  group_id: string
+  group_name: string
+  model_whitelist: string[]
+  max_requests_per_period: number | null
+  max_tokens_per_period: number | null
+  sort_order: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface PublicSubscriptionPlan {
+  id: string
+  name: string
+  description: string
+  price: string
+  currency: string
+  billing_period: 'month' | 'year'
+  credit_amount: string
+  group_name: string
+  model_whitelist: string[]
+  sort_order: number
+}
+
+export interface UserSubscription {
+  id: string
+  user_id: string
+  plan_id: string
+  plan_name: string
+  status: 'pending' | 'active' | 'expired' | 'cancelled'
+  current_period_start: string | null
+  current_period_end: string | null
+  auto_renew: boolean
+  cancelled_at: string | null
+  created_at: string
+  updated_at: string
+  price: string
+  billing_period: 'month' | 'year'
+  credit_amount: string
+  group_id: string
+  group_name: string
+  model_whitelist: string[]
+  max_requests_per_period: number | null
+  max_tokens_per_period: number | null
+}
+
+export interface SubscriptionOrder {
+  id: string
+  order_no: string
+  subscription_id: string
+  plan_id: string
+  plan_name: string
+  provider: string
+  payment_type: string
+  amount: string
+  status: 'pending' | 'paid' | 'failed' | 'expired'
+  provider_trade_no?: string
+  period_kind: 'new' | 'renewal'
+  paid_at: string | null
+  created_at: string
+}
+
+export interface AdminSubscription {
+  id: string
+  user_id: string
+  email: string
+  user_name: string
+  plan_id: string
+  plan_name: string
+  status: 'pending' | 'active' | 'expired' | 'cancelled'
+  current_period_start: string | null
+  current_period_end: string | null
+  auto_renew: boolean
+  cancelled_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 let token = import.meta.client ? sessionStorage.getItem('xinghai.admin-token') ?? '' : ''
 export const getToken = () => token
 export const setToken = (value: string) => { token = value.trim(); sessionStorage.setItem('xinghai.admin-token', token) }
