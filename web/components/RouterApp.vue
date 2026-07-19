@@ -247,44 +247,115 @@ async function loadActivity(filters = false) {
 async function filterActivity() { await action(() => loadActivity(true)) }
 async function resetActivityFilters() { Object.assign(activityFilters, { user_id: '', model: '', group_id: '', start: '', end: '', type: '' }); await action(() => loadActivity()) }
 
+// Core account + site settings. Always loaded on entry; cheap and required by
+// the sidebar, header and most views.
+async function loadCore() {
+  const [settings, me] = await Promise.all([api<SiteSettings>('/site-settings'), api<Account>('/account/me')])
+  siteSettings.value = settings
+  Object.assign(siteSettingsForm, settings)
+  account.value = me
+  leaderboardPrefs.opt_in = me.leaderboard_opt_in; leaderboardPrefs.mask_name = me.leaderboard_mask_name
+  const ownGroupValue = await api<{ data: string[]; groups: Group[] }>('/account/groups').catch(() => ({ data: [], groups: [] }))
+  ownGroups.value = ownGroupValue.data
+  if (!can('users.read')) groups.value = ownGroupValue.groups
+}
+
+// Personal data shared across account/wallet/overview/subscriptions views.
+// `keys`/`usage`/`ledger`/`payments`/`subscriptions`/`subscription-orders`/`activity`.
+async function loadPersonal() {
+  const [ownKeys, ownUsage, ownLedger, ownPayments] = await Promise.all([
+    api<{ data: ApiKey[] }>('/account/keys').catch(() => ({ data: [] })),
+    api<{ data: UsageRecord[] }>('/account/usage').catch(() => ({ data: [] })),
+    api<{ data: LedgerEntry[] }>('/account/ledger').catch(() => ({ data: [] })),
+    api<{ enabled: boolean; payment_methods: PaymentMethod[]; data: PaymentOrder[] }>('/account/payments').catch(() => ({ enabled: false, payment_methods: [], data: [] })),
+  ])
+  accountKeys.value = ownKeys.data; usageRecords.value = ownUsage.data; ledger.value = ownLedger.data
+  paymentsEnabled.value = ownPayments.enabled; payments.value = ownPayments.data; paymentMethods.value = ownPayments.payment_methods ?? []
+  if (!paymentMethods.value.some((method) => method.code === paymentForm.type)) paymentForm.type = paymentMethods.value[0]?.code ?? ''
+  const [ownSubs, ownSubOrders] = await Promise.all([
+    api<{ data: UserSubscription[] }>('/account/subscriptions').catch(() => ({ data: [] as UserSubscription[] })),
+    api<{ data: SubscriptionOrder[] }>('/account/subscription-orders').catch(() => ({ data: [] as SubscriptionOrder[] })),
+  ])
+  userSubscriptions.value = ownSubs.data
+  subscriptionOrders.value = ownSubOrders.data
+  await loadActivity()
+}
+
+async function loadUsersAndGroups() {
+  if (!can('users.read')) return
+  const [userValue, groupValue] = await Promise.all([api<{ data: User[] }>('/admin/users'), api<{ data: Group[] }>('/admin/groups')])
+  users.value = userValue.data; groups.value = groupValue.data
+}
+async function loadAdminKeys() { if (can('keys.manage')) keys.value = (await api<{ data: ApiKey[] }>('/admin/keys')).data }
+async function loadAdminChannels() { if (can('channels.read')) channels.value = (await api<{ data: Channel[] }>('/admin/channels')).data }
+async function loadProviders() { if (can('system.manage')) providers.value = (await api<{ data: ModelProvider[] }>('/admin/providers')).data }
+async function loadPaymentSettings() {
+  if (!can('system.manage')) return
+  const value = await api<PaymentSettings>('/admin/payment-settings')
+  Object.assign(paymentSettings, value)
+  Object.assign(paymentSettingsForm, { enabled: value.enabled, base_url: value.base_url, merchant_id: value.merchant_id, merchant_key: '', public_base_url: value.public_base_url })
+}
+async function loadPricing() { if (can('pricing.read')) pricing.value = (await api<{ data: Pricing[] }>('/admin/pricing')).data }
+async function loadReliability() { if (can('system.manage')) Object.assign(reliabilityForm, await api<ReliabilitySettings>('/admin/reliability-settings')) }
+async function loadSubscriptionPlans() { if (can('system.manage')) subscriptionPlans.value = (await api<{ data: SubscriptionPlan[] }>('/admin/subscription-plans')).data }
+async function loadAdminSubscriptions() { if (can('users.read')) adminSubscriptions.value = (await api<{ data: AdminSubscription[] }>('/admin/subscriptions')).data }
+async function loadAdminSiteSettings() {
+  if (!can('system.manage')) return
+  const value = await api<AdminSiteSettings>('/admin/site-settings')
+  Object.assign(siteSettingsForm, value); siteSettingsForm.geetest_captcha_key = ''; siteSettingsForm.smtp_password = ''
+}
+
+// Map each console view to the loaders it requires. Entry into a view only
+// triggers the loaders listed here, so a regular user opening /console/account
+// no longer fires a dozen admin endpoints.
+const VIEW_LOADERS: Partial<Record<View, (() => Promise<void>)[]>> = {
+  overview: [loadPersonal],
+  account: [loadPersonal],
+  profile: [loadPersonal],
+  wallet: [loadPersonal],
+  ledger: [loadPersonal],
+  subscriptions: [loadPersonal],
+  usage: [loadPersonal, loadUsersAndGroups],
+  users: [loadUsersAndGroups],
+  groups: [loadUsersAndGroups],
+  keys: [loadAdminKeys, loadUsersAndGroups],
+  channels: [loadAdminChannels],
+  providers: [loadProviders],
+  pricing: [loadPricing],
+  reliability: [loadReliability],
+  'site-settings': [loadAdminSiteSettings],
+  'payment-settings': [loadPaymentSettings],
+  'subscription-plans': [loadSubscriptionPlans, loadUsersAndGroups],
+  'admin-subscriptions': [loadAdminSubscriptions],
+}
+
+const loadedViews = ref<Set<View>>(new Set())
+async function loadView(targetView: View, force = false) {
+  if (!force && loadedViews.value.has(targetView)) return
+  loadedViews.value.add(targetView)
+  const loaders = VIEW_LOADERS[targetView] ?? []
+  await Promise.all(loaders.map((loader) => loader().catch(() => undefined)))
+}
+
+// Full reload of the currently visible view plus core/personal data. Used by
+// the Refresh button and after any mutation (createKey/savePricing/savePlan...).
 async function load() {
   busy.value = true; error.value = ''
   try {
-    const [settings, me] = await Promise.all([api<SiteSettings>('/site-settings'), api<Account>('/account/me')])
-    siteSettings.value = settings
-    Object.assign(siteSettingsForm, settings)
-    account.value = me
-    leaderboardPrefs.opt_in = me.leaderboard_opt_in; leaderboardPrefs.mask_name = me.leaderboard_mask_name
-    const [ownKeys, ownUsage, ownLedger, ownGroupValue, ownPayments] = await Promise.all([
-      api<{ data: ApiKey[] }>('/account/keys').catch(() => ({ data: [] })),
-      api<{ data: UsageRecord[] }>('/account/usage').catch(() => ({ data: [] })),
-      api<{ data: LedgerEntry[] }>('/account/ledger').catch(() => ({ data: [] })),
-      api<{ data: string[]; groups: Group[] }>('/account/groups').catch(() => ({ data: [], groups: [] })),
-      api<{ enabled: boolean; payment_methods: PaymentMethod[]; data: PaymentOrder[] }>('/account/payments').catch(() => ({ enabled: false, payment_methods: [], data: [] })),
-    ])
-    accountKeys.value = ownKeys.data; usageRecords.value = ownUsage.data; ledger.value = ownLedger.data; ownGroups.value = ownGroupValue.data
-    paymentsEnabled.value = ownPayments.enabled; payments.value = ownPayments.data; paymentMethods.value = ownPayments.payment_methods ?? []
-    if (!paymentMethods.value.some((method) => method.code === paymentForm.type)) paymentForm.type = paymentMethods.value[0]?.code ?? ''
-    const ownSubs = await api<{ data: UserSubscription[] }>('/account/subscriptions').catch(() => ({ data: [] as UserSubscription[] }))
-    userSubscriptions.value = ownSubs.data
-    const ownSubOrders = await api<{ data: SubscriptionOrder[] }>('/account/subscription-orders').catch(() => ({ data: [] as SubscriptionOrder[] }))
-    subscriptionOrders.value = ownSubOrders.data
-    await loadActivity()
-    if (!can('users.read')) groups.value = ownGroupValue.groups
-    const requests: Promise<void>[] = []
-    if (can('users.read')) requests.push(Promise.all([api<{ data: User[] }>('/admin/users'), api<{ data: Group[] }>('/admin/groups')]).then(([userValue, groupValue]) => { users.value = userValue.data; groups.value = groupValue.data }))
-    if (can('keys.manage')) requests.push(api<{ data: ApiKey[] }>('/admin/keys').then((value) => { keys.value = value.data }))
-    if (can('channels.read')) requests.push(api<{ data: Channel[] }>('/admin/channels').then((value) => { channels.value = value.data }))
-    if (can('system.manage')) requests.push(api<{ data: ModelProvider[] }>('/admin/providers').then((value) => { providers.value = value.data }))
-    if (can('system.manage')) requests.push(api<PaymentSettings>('/admin/payment-settings').then((value) => { Object.assign(paymentSettings, value); Object.assign(paymentSettingsForm, { enabled: value.enabled, base_url: value.base_url, merchant_id: value.merchant_id, merchant_key: '', public_base_url: value.public_base_url }) }))
-    if (can('pricing.read')) requests.push(api<{ data: Pricing[] }>('/admin/pricing').then((value) => { pricing.value = value.data }))
-    if (can('system.manage')) requests.push(api<ReliabilitySettings>('/admin/reliability-settings').then((value) => { Object.assign(reliabilityForm, value) }))
-    if (can('system.manage')) requests.push(api<{ data: SubscriptionPlan[] }>('/admin/subscription-plans').then((value) => { subscriptionPlans.value = value.data }))
-    if (can('users.read')) requests.push(api<{ data: AdminSubscription[] }>('/admin/subscriptions').then((value) => { adminSubscriptions.value = value.data }))
-    if (can('system.manage')) requests.push(api<AdminSiteSettings>('/admin/site-settings').then((value) => { Object.assign(siteSettingsForm, value); siteSettingsForm.geetest_captcha_key = ''; siteSettingsForm.smtp_password = '' }))
-    await Promise.all(requests)
+    await loadCore()
+    await loadPersonal()
+    loadedViews.value.clear()
+    await loadView(view.value, true)
     } catch (cause) { error.value = cause instanceof Error ? cause.message : t('loadFailed') } finally { busy.value = false }
 }
+
+// Lazy-load data for the view the user just navigated to. Runs only after the
+// console is authenticated, so the landing/auth pages don't trigger fetches.
+watch(view, async (next) => {
+  if (!authenticated.value) return
+  busy.value = true; error.value = ''
+  try { await loadView(next) } catch (cause) { error.value = cause instanceof Error ? cause.message : t('loadFailed') } finally { busy.value = false }
+})
 async function loadSiteSettings() { const value = await api<SiteSettings>('/site-settings'); siteSettings.value = value; Object.assign(siteSettingsForm, value); document.title = value.name; const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'icon' })); if (value.icon_url) link.href = value.icon_url; else link.removeAttribute('href') }
 async function saveSiteSettings() { await action(async () => { const value = await api<AdminSiteSettings>('/admin/site-settings', { method: 'PUT', body: JSON.stringify(siteSettingsForm) }); Object.assign(siteSettingsForm, value); siteSettingsForm.geetest_captcha_key = ''; siteSettingsForm.smtp_password = ''; await loadSiteSettings() }) }
 async function saveReliabilitySettings() { await action(async () => { const value = await api<ReliabilitySettings>('/admin/reliability-settings', { method: 'PUT', body: JSON.stringify(reliabilityForm) }); Object.assign(reliabilityForm, value) }) }
