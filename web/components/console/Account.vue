@@ -24,7 +24,7 @@ const { t, accountKeys, showAccountKey, formatDate, editAccountKey } = store
           <th>{{ t('createdAt') }}</th>
           <th>{{ t('lastUsed') }}</th>
           <th>{{ t('accountStatus') }}</th>
-          <th></th>
+          <th/>
         </tr>
       </thead>
       <tbody>

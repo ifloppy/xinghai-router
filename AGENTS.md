@@ -29,7 +29,7 @@ Dockerfile         Multi-stage build for router (Go) and web (Nuxt)
 ## Tech stack and key libraries
 
 - Go 1.26, module `github.com/xinghai-osc/xinghai-router`. Only stdlib plus `github.com/jackc/pgx/v5` (pgxpool) and `golang.org/x/crypto` (bcrypt). Do not introduce new dependencies without strong reason.
-- Web: Nuxt 3 (`nuxt`), Vue 3, TypeScript, `lucide-vue-next`, `@lobehub/icons-static-svg`. No ESLint or test runner is configured for the web app.
+- Web: Nuxt 3 (`nuxt`), Vue 3, TypeScript, `lucide-vue-next`, `@lobehub/icons-static-svg`. ESLint is configured via flat config (`web/eslint.config.mjs` wrapping `@nuxt/eslint`); no test runner is configured for the web app.
 - DB: PostgreSQL 17. Migrations are plain `.sql` files embedded with `//go:embed migrations/*.sql` and applied idempotently by `internal/app/migrate.go`.
 
 ## Build and run
@@ -65,7 +65,14 @@ go vet ./...
 go test ./...
 ```
 
-From `web/`, `npm run build` validates the Nuxt app and `npm run generate` emits prerendered pages. There is no web lint/test script.
+From `web/`, `npm run build` validates the Nuxt app and `npm run generate` emits prerendered pages. Lint is configured via ESLint flat config (`web/eslint.config.mjs`, wrapping `@nuxt/eslint`); run it before considering web work done:
+
+```sh
+cd web && npm run lint        # eslint .  (errors fail, warnings do not)
+cd web && npm run lint:fix    # auto-fix stylistic rules (html-self-closing, etc.)
+```
+
+There is no web test script. No `vue-tsc` typecheck or Prettier is wired in yet.
 
 ## Conventions
 

@@ -23,7 +23,7 @@ const { t, users, can, manageUser } = store
           <th>{{ t('balanceLabel') }}</th>
           <th>{{ t('permissionScope') }}</th>
           <th>{{ t('accountStatus') }}</th>
-          <th></th>
+          <th/>
         </tr>
       </thead>
       <tbody>

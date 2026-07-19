@@ -41,7 +41,7 @@ function price(model: SquareModel, kind: 'input' | 'output' | 'cache') {
         <tr v-for="model in props.models" :key="model.model" @click="emit('open', model)">
           <td>
             <div class="msq-cell-model">
-              <img v-if="model.vendor_slug && !iconErrors.has(model.vendor_slug)" :src="vendorIconUrl(model.vendor_slug)" :alt="model.vendor_name" loading="lazy" @error="iconFailed(model.vendor_slug)" />
+              <img v-if="model.vendor_slug && !iconErrors.has(model.vendor_slug)" :src="vendorIconUrl(model.vendor_slug)" :alt="model.vendor_name" loading="lazy" @error="iconFailed(model.vendor_slug)" >
               <span class="msq-mono">{{ model.model }}</span>
             </div>
           </td>

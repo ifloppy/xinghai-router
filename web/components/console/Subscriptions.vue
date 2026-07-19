@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useConsoleStore } from '~/composables/useConsoleStore'
 import Empty from '~/components/console/Empty.vue'
 
@@ -28,7 +28,7 @@ const planModels = (plan: { model_whitelist: string[] }) => t('subscriptionModel
   <section v-if="userSubscriptions.length" class="panel table-panel">
     <div class="panel-title"><div><h2>{{ t('mySubscriptions') }}</h2><p>{{ t('mySubscriptionsDesc') }}</p></div></div>
     <table>
-      <thead><tr><th>{{ t('planLabel') }}</th><th>{{ t('accountStatus') }}</th><th>{{ t('currentPeriod') }}</th><th>{{ t('autoRenew') }}</th><th></th></tr></thead>
+      <thead><tr><th>{{ t('planLabel') }}</th><th>{{ t('accountStatus') }}</th><th>{{ t('currentPeriod') }}</th><th>{{ t('autoRenew') }}</th><th/></tr></thead>
       <tbody>
         <tr v-for="sub in userSubscriptions" :key="sub.id">
           <td><b>{{ sub.plan_name }}</b><small>{{ sub.price }} {{ t('currency_' + (sub.billing_period === 'year' ? 'year' : 'month')) }}</small></td>
@@ -82,7 +82,7 @@ const planModels = (plan: { model_whitelist: string[] }) => t('subscriptionModel
       <div class="modal-title"><h2>{{ t('subscribeTitle') }} · {{ subscribingPlan.name }}</h2><button type="button" @click="subscribingPlan = null">×</button></div>
       <p class="muted">{{ t('subscribeDesc') }}</p>
       <label>{{ t('paymentMethod') }}<select v-model="subscribeForm.payment_type" required><option v-for="method in paymentMethods" :key="method.id" :value="method.code">{{ method.name }}</option></select></label>
-      <label class="payment-enabled"><input v-model="subscribeForm.auto_renew" type="checkbox" />{{ t('enableAutoRenew') }}</label>
+      <label class="payment-enabled"><input v-model="subscribeForm.auto_renew" type="checkbox" >{{ t('enableAutoRenew') }}</label>
       <button class="button primary full" :disabled="busy">{{ t('goToPay') }}</button>
     </form>
   </div>

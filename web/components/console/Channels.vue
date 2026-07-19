@@ -25,14 +25,14 @@ const { t, channels, can, showChannel, toggleChannel, editChannel } = store
           <th>{{ t('modelLabel') }}</th>
           <th>{{ t('priorityLabel') }}</th>
           <th v-if="can('channels.manage')">{{ t('enableChannelLabel') }}</th>
-          <th v-if="can('channels.manage')"></th>
+          <th v-if="can('channels.manage')"/>
         </tr>
       </thead>
       <tbody>
         <tr v-for="channel in channels" :key="channel.id">
           <td>
             <span :class="['state', channel.enabled ? 'good' : 'bad']">
-              <i :class="['status-dot', { off: !channel.enabled }]"></i>
+              <i :class="['status-dot', { off: !channel.enabled }]"/>
               {{ channel.enabled ? t('enabled') : channel.auto_disabled ? t('autoDisabled') : t('disabled') }}
             </span>
             <small v-if="channel.auto_disabled && channel.disabled_reason" class="muted" :title="channel.disabled_reason">{{ channel.disabled_reason }}</small>
@@ -42,7 +42,7 @@ const { t, channels, can, showChannel, toggleChannel, editChannel } = store
           <td><div class="model-tags"><span v-for="model in channel.models" :key="model">{{ model }}</span></div></td>
           <td>{{ channel.priority }}</td>
           <td v-if="can('channels.manage')">
-            <button class="toggle" :class="{ on: channel.enabled }" :aria-label="channel.enabled ? t('disableChannelLabel') : t('enableChannelLabel')" @click="toggleChannel(channel)"><i></i></button>
+            <button class="toggle" :class="{ on: channel.enabled }" :aria-label="channel.enabled ? t('disableChannelLabel') : t('enableChannelLabel')" @click="toggleChannel(channel)"><i/></button>
           </td>
           <td v-if="can('channels.manage')">
             <button class="text-button" @click="editChannel(channel)">{{ t('edit') }}</button>

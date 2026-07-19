@@ -44,7 +44,7 @@ async function copyName(event: MouseEvent) {
     <div class="msq-card-top">
       <div class="msq-card-id">
         <div class="msq-iconbox">
-          <img v-if="props.model.vendor_slug && !iconError" :src="vendorIconUrl(props.model.vendor_slug)" :alt="props.model.vendor_name" loading="lazy" @error="iconError = true" />
+          <img v-if="props.model.vendor_slug && !iconError" :src="vendorIconUrl(props.model.vendor_slug)" :alt="props.model.vendor_name" loading="lazy" @error="iconError = true" >
           <span v-else>{{ props.model.model.slice(0, 1).toUpperCase() }}</span>
         </div>
         <div class="msq-card-title">

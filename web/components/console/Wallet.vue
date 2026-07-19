@@ -39,7 +39,7 @@ const { t, account, ledger, payments, paymentMethods, paymentsEnabled, paymentMe
       <p>{{ paymentsEnabled ? t('onlineTopupDesc') : t('paymentNotConfigured') }}</p>
       <strong v-if="paymentMessage" class="payment-message">{{ paymentMessage }}</strong>
     </div>
-    <label>{{ t('topupAmount') }}<input v-model.number="paymentForm.amount" type="number" min="1" max="100000" step="0.01" required /></label>
+    <label>{{ t('topupAmount') }}<input v-model.number="paymentForm.amount" type="number" min="1" max="100000" step="0.01" required ></label>
     <label>{{ t('paymentMethod') }}
       <select v-model="paymentForm.type" required>
         <option v-for="method in paymentMethods" :key="method.id" :value="method.code">{{ method.name }}</option>

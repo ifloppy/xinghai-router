@@ -66,7 +66,7 @@ const skeletonCards = Array.from({ length: 6 }, (_, index) => index)
 
 <template>
   <div class="msq-root">
-    <div class="msq-gradient" aria-hidden="true"></div>
+    <div class="msq-gradient" aria-hidden="true"/>
 
     <div class="msq-container">
       <header class="msq-header">
@@ -77,11 +77,11 @@ const skeletonCards = Array.from({ length: 6 }, (_, index) => index)
       </header>
 
       <div v-if="!props.loaded" class="msq-skeleton-wrap">
-        <div class="msq-skeleton-toolbar"></div>
+        <div class="msq-skeleton-toolbar"/>
         <div class="msq-grid">
           <div v-for="item in skeletonCards" :key="item" class="msq-skeleton-card">
-            <div class="row"><i></i><div><b></b><span></span></div></div>
-            <p></p><p class="short"></p>
+            <div class="row"><i/><div><b/><span/></div></div>
+            <p/><p class="short"/>
           </div>
         </div>
       </div>
@@ -148,7 +148,7 @@ const skeletonCards = Array.from({ length: 6 }, (_, index) => index)
 
     <Teleport to="body">
       <template v-if="mobileFiltersOpen">
-        <div class="msq-sheet-backdrop" @click="mobileFiltersOpen = false"></div>
+        <div class="msq-sheet-backdrop" @click="mobileFiltersOpen = false"/>
         <div class="msq-sheet">
           <div class="msq-sheet-head">
             <h2>{{ t('msFilter') }}</h2>

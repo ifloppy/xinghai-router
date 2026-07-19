@@ -31,15 +31,15 @@ const { t, users, groups, activityLogs, activityModels, activityFilters, activit
         <p>{{ t('last7DaysTokenAndCost') }}</p>
       </div>
       <div class="chart-legend">
-        <span><i class="token-dot"></i>{{ t('tokenLabel') }}</span>
-        <span><i class="cost-dot"></i>{{ t('costLabel') }}</span>
+        <span><i class="token-dot"/>{{ t('tokenLabel') }}</span>
+        <span><i class="cost-dot"/>{{ t('costLabel') }}</span>
       </div>
     </div>
     <div class="chart-bars">
       <div v-for="day in usageChart" :key="day.key" class="chart-day">
         <div class="chart-values">
-          <span :style="{ height: `${day.tokenHeight}%` }" :title="`${day.tokens.toLocaleString()} tokens`"></span>
-          <i :style="{ height: `${day.costHeight}%` }" :title="`${t('costLabel')} ${day.cost.toFixed(6)}`"></i>
+          <span :style="{ height: `${day.tokenHeight}%` }" :title="`${day.tokens.toLocaleString()} tokens`"/>
+          <i :style="{ height: `${day.costHeight}%` }" :title="`${t('costLabel')} ${day.cost.toFixed(6)}`"/>
         </div>
         <b>{{ day.label }}</b>
         <small>{{ day.tokens ? day.tokens.toLocaleString() : '-' }}</small>
@@ -76,8 +76,8 @@ const { t, users, groups, activityLogs, activityModels, activityFilters, activit
         <option value="operation">{{ activityTypeLabel['operation'] }}</option>
       </select>
     </label>
-    <label>{{ t('startTime') }}<input v-model="activityFilters.start" type="datetime-local" /></label>
-    <label>{{ t('endTime') }}<input v-model="activityFilters.end" type="datetime-local" /></label>
+    <label>{{ t('startTime') }}<input v-model="activityFilters.start" type="datetime-local" ></label>
+    <label>{{ t('endTime') }}<input v-model="activityFilters.end" type="datetime-local" ></label>
     <div class="activity-filter-actions">
       <button class="button primary" :disabled="busy">{{ t('filterLabel') }}</button>
       <button type="button" class="button ghost" :disabled="busy" @click="resetActivityFilters">{{ t('resetFiltersLabel') }}</button>

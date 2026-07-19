@@ -4,7 +4,7 @@ import { useConsoleStore } from '~/composables/useConsoleStore'
 import Empty from '~/components/console/Empty.vue'
 
 const store = useConsoleStore()
-const { t, keys, users, showKey, busy, userName, formatDate, revokeKey } = store
+const { t, keys, users, showKey, userName, formatDate, revokeKey } = store
 </script>
 
 <template>
@@ -24,7 +24,7 @@ const { t, keys, users, showKey, busy, userName, formatDate, revokeKey } = store
           <th>{{ t('keyPrefix') }}</th>
           <th>{{ t('lastUsed') }}</th>
           <th>{{ t('accountStatus') }}</th>
-          <th></th>
+          <th/>
         </tr>
       </thead>
       <tbody>

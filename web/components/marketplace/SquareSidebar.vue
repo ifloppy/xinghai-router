@@ -79,7 +79,7 @@ const quotaOptions = computed(() => [
             <span class="msq-chip-meta">{{ props.models.length }}</span>
           </button>
           <button v-for="vendor in vendors" :key="vendor.name" type="button" :class="['msq-chip', { active: props.vendorFilter === vendor.name }]" :title="vendor.name" @click="emit('update:vendorFilter', vendor.name)">
-            <img v-if="vendor.slug && !iconErrors.has(vendor.slug)" class="msq-chip-icon" :src="vendorIconUrl(vendor.slug)" :alt="vendor.name" loading="lazy" @error="iconFailed(vendor.slug)" />
+            <img v-if="vendor.slug && !iconErrors.has(vendor.slug)" class="msq-chip-icon" :src="vendorIconUrl(vendor.slug)" :alt="vendor.name" loading="lazy" @error="iconFailed(vendor.slug)" >
             <span class="msq-chip-label">{{ vendor.name }}</span>
             <span class="msq-chip-meta">{{ vendor.count }}</span>
           </button>

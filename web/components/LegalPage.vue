@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const props = defineProps<{ kind: 'terms' | 'privacy' }>()
-const { locale, t, toggleLocale, initializeLocale } = useI18n()
+const { locale, t, initializeLocale } = useI18n()
 
 const isTerms = computed(() => props.kind === 'terms')
 const title = computed(() => isTerms.value ? t('termsTitle') : t('privacyTitle'))

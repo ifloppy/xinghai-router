@@ -73,14 +73,14 @@ watch(() => props.model.model, () => { tab.value = 'overview' })
 
 <template>
   <Teleport to="body">
-    <div class="msq-drawer-backdrop" @click="emit('close')"></div>
+    <div class="msq-drawer-backdrop" @click="emit('close')"/>
     <div class="msq-drawer" role="dialog" :aria-label="props.model.model">
       <button type="button" class="msq-drawer-close" :aria-label="t('msClose')" @click="emit('close')"><X :size="16" /></button>
       <div class="msq-drawer-body">
         <header class="msq-drawer-header">
           <div class="msq-drawer-title">
             <span class="msq-iconbox small">
-              <img v-if="props.model.vendor_slug && !iconError" :src="vendorIconUrl(props.model.vendor_slug)" :alt="props.model.vendor_name" @error="iconError = true" />
+              <img v-if="props.model.vendor_slug && !iconError" :src="vendorIconUrl(props.model.vendor_slug)" :alt="props.model.vendor_name" @error="iconError = true" >
               <span v-else>{{ props.model.model.slice(0, 1).toUpperCase() }}</span>
             </span>
             <h1>{{ props.model.model }}</h1>

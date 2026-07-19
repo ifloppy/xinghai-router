@@ -29,7 +29,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown))
       :placeholder="props.placeholder || t('msSearchPlaceholder')"
       :aria-label="t('msSearchPlaceholder')"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
-    />
+    >
     <div class="msq-search-side">
       <button v-if="props.modelValue" type="button" class="msq-search-clear" :aria-label="t('msClearSearch')" @click="emit('clear')">
         <X :size="15" />

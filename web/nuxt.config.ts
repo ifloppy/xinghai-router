@@ -1,4 +1,5 @@
 export default defineNuxtConfig({
+  modules: ['@nuxt/eslint'],
   css: ['~/src/style.css'],
   nitro: {
     prerender: {

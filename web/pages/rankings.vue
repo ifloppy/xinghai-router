@@ -9,7 +9,7 @@ const rankings = ref<Rankings | null>(null)
 const siteSettings = ref<SiteSettings>({ name: 'Xinghai Router', icon_url: '', auto_disable_failed_channels: false })
 const loading = ref(true)
 const error = ref('')
-const { locale, t, setLocale, initializeLocale } = useI18n()
+const { locale, t, initializeLocale } = useI18n()
 const periods: { value: Period; label: string }[] = [{ value: 'today', label: t('today') }, { value: 'week', label: t('thisWeek') }, { value: 'month', label: t('thisMonth') }, { value: 'year', label: t('thisYear') }]
 
 const compactNumber = (value: number) => new Intl.NumberFormat(locale.value, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
@@ -66,18 +66,18 @@ onMounted(() => {
       </header>
       <div class="rankings-controls"><div><span>{{ t('timeRange') }}</span><div class="period-tabs"><button v-for="item in periods" :key="item.value" :class="{ active: period === item.value }" :disabled="loading" @click="selectPeriod(item.value)">{{ item.label }}</button></div></div><button class="ranking-refresh" :disabled="loading" @click="load()"><RefreshCw :size="15" :class="{ spinning: loading }" />{{ t('refreshData') }}</button></div>
 
-      <div v-if="loading && !rankings" class="rankings-loading"><div></div><div></div><div></div></div>
+      <div v-if="loading && !rankings" class="rankings-loading"><div/><div/><div/></div>
       <section v-else-if="error && !rankings" class="rankings-error"><h2>{{ t('cannotLoadRankings') }}</h2><p>{{ error }}</p><button class="button ghost" @click="load()">{{ t('reload') }}</button></section>
       <template v-else-if="rankings">
         <section class="ranking-panel">
           <div class="ranking-panel-title"><div><span>TOP MODELS</span><h2>{{ t('llmRankings') }}</h2><p>{{ t('rankingsSortByTokens') }}</p></div><b>{{ rankings.models.length }} {{ t('modelCount') }}</b></div>
-          <div v-if="rankings.models.length" class="model-rankings"><article v-for="item in rankings.models" :key="item.model_name"><b :class="['rank-number', { podium: item.rank <= 3 }]">{{ String(item.rank).padStart(2, '0') }}</b><div class="rank-model"><i>{{ item.model_name.slice(0, 1).toUpperCase() }}</i><span><strong>{{ item.model_name }}</strong><small>{{ item.vendor }}</small></span></div><div class="rank-share"><i><span :style="{ width: `${Math.max(item.share * 100, 1)}%` }"></span></i><small>{{ share(item.share) }}</small></div><div class="rank-tokens"><strong>{{ compactNumber(item.total_tokens) }}</strong><small>Token</small></div><em :class="item.growth_pct < 0 ? 'down' : 'up'"><ArrowDown v-if="item.growth_pct < 0" :size="11" /><ArrowUp v-else :size="11" />{{ change(item.growth_pct) }}</em></article></div>
+          <div v-if="rankings.models.length" class="model-rankings"><article v-for="item in rankings.models" :key="item.model_name"><b :class="['rank-number', { podium: item.rank <= 3 }]">{{ String(item.rank).padStart(2, '0') }}</b><div class="rank-model"><i>{{ item.model_name.slice(0, 1).toUpperCase() }}</i><span><strong>{{ item.model_name }}</strong><small>{{ item.vendor }}</small></span></div><div class="rank-share"><i><span :style="{ width: `${Math.max(item.share * 100, 1)}%` }"/></i><small>{{ share(item.share) }}</small></div><div class="rank-tokens"><strong>{{ compactNumber(item.total_tokens) }}</strong><small>Token</small></div><em :class="item.growth_pct < 0 ? 'down' : 'up'"><ArrowDown v-if="item.growth_pct < 0" :size="11" /><ArrowUp v-else :size="11" />{{ change(item.growth_pct) }}</em></article></div>
           <div v-else class="ranking-empty">{{ t('noModelUsage') }}</div>
         </section>
 
         <section class="ranking-panel">
           <div class="ranking-panel-title"><div><span>MARKET SHARE</span><h2>{{ t('vendorShare') }}</h2><p>{{ t('vendorShareDesc') }}</p></div></div>
-          <div v-if="rankings.vendors.length" class="vendor-list"><article v-for="item in rankings.vendors.slice(0, 12)" :key="item.vendor"><b>{{ String(item.rank).padStart(2, '0') }}</b><div><strong>{{ item.vendor }}</strong><small>{{ item.models_count }} {{ t('modelCount') }} · {{ t('topModelLabel') }} {{ item.top_model }}</small></div><i><span :style="{ width: `${item.share * 100}%` }"></span></i><span>{{ share(item.share) }}</span><em :class="item.growth_pct < 0 ? 'down' : 'up'">{{ change(item.growth_pct) }}</em></article></div>
+          <div v-if="rankings.vendors.length" class="vendor-list"><article v-for="item in rankings.vendors.slice(0, 12)" :key="item.vendor"><b>{{ String(item.rank).padStart(2, '0') }}</b><div><strong>{{ item.vendor }}</strong><small>{{ item.models_count }} {{ t('modelCount') }} · {{ t('topModelLabel') }} {{ item.top_model }}</small></div><i><span :style="{ width: `${item.share * 100}%` }"/></i><span>{{ share(item.share) }}</span><em :class="item.growth_pct < 0 ? 'down' : 'up'">{{ change(item.growth_pct) }}</em></article></div>
           <div v-else class="ranking-empty">{{ t('noVendorData') }}</div>
         </section>
 

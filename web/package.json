@@ -7,7 +7,9 @@
     "dev": "nuxt dev",
     "build": "nuxt build",
     "generate": "nuxt generate",
-    "preview": "nuxt preview"
+    "preview": "nuxt preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@lobehub/icons-static-svg": "^1.93.0",
@@ -16,7 +18,9 @@
     "vue": "^3.5.13"
   },
   "devDependencies": {
+    "@nuxt/eslint": "^1.16.0",
     "@types/node": "^22.10.2",
+    "eslint": "^9.39.5",
     "typescript": "~5.7.2"
   }
 }

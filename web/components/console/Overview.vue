@@ -47,7 +47,7 @@ const { t, account, accountKeys, personalRequests, personalTokens, personalCost,
       </div>
       <pre><span>curl {{ apiEndpoint }} \</span><span>  -H <i>"Authorization: Bearer sk-xh-..."</i> \</span><span>  -H <i>"Content-Type: application/json"</i> \</span><span>  -d <i>'{"model":"kimi-m3",</i></span><span><i>       "messages":[{"role":"user","content":"你好"}]}'</i></span></pre>
       <div class="request-signals">
-        <span><i></i>{{ t('gatewayOnline') }}</span>
+        <span><i/>{{ t('gatewayOnline') }}</span>
         <button @click="openConsole('account')">{{ t('viewKeys') }} <ChevronRight :size="14" /></button>
       </div>
     </div>
