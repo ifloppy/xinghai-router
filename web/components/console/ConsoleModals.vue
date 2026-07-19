@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 
 const store = useConsoleStore()
 const {
@@ -150,12 +151,13 @@ const selectMultiClass = 'flex min-h-9 w-full rounded-md border border-input bg-
     </DialogContent>
   </Dialog>
 
-  <Dialog :open="showChannel || Boolean(editingChannel)" @update:open="v => !v && ((showChannel = false) || (editingChannel = null))">
-    <DialogContent class="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>{{ editingChannel ? t('editChannel') : t('addChannel') }}</DialogTitle>
-      </DialogHeader>
-      <form class="grid gap-4" @submit.prevent="editingChannel ? updateChannel() : createChannel()">
+  <Sheet :open="showChannel || Boolean(editingChannel)" @update:open="v => !v && ((showChannel = false) || (editingChannel = null))">
+    <SheetContent side="right" class="w-full overflow-y-auto sm:max-w-lg">
+      <SheetHeader>
+        <SheetTitle>{{ editingChannel ? t('editChannel') : t('addChannel') }}</SheetTitle>
+        <SheetDescription class="sr-only">{{ editingChannel ? t('editChannel') : t('addChannel') }}</SheetDescription>
+      </SheetHeader>
+      <form class="grid gap-4 px-6 pb-6" @submit.prevent="editingChannel ? updateChannel() : createChannel()">
         <div class="flex flex-col gap-2">
           <Label>{{ t('channelNameLabel') }}</Label>
           <Input v-model="channelForm.name" required maxlength="100" />
@@ -193,12 +195,12 @@ const selectMultiClass = 'flex min-h-9 w-full rounded-md border border-input bg-
             <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }} · {{ Number(group.multiplier).toFixed(2) }}x</option>
           </select>
         </div>
-        <DialogFooter>
+        <SheetFooter>
           <Button type="submit" :disabled="busy" class="w-full">{{ editingChannel ? t('saveChanges') : t('addChannel') }}</Button>
-        </DialogFooter>
+        </SheetFooter>
       </form>
-    </DialogContent>
-  </Dialog>
+    </SheetContent>
+  </Sheet>
 
   <Dialog :open="showProvider" @update:open="v => !v && (showProvider = false)">
     <DialogContent class="sm:max-w-md">

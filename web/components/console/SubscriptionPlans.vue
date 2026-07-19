@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const store = useConsoleStore()
@@ -62,12 +62,13 @@ const selectClass = 'flex h-9 w-full rounded-md border border-input bg-transpare
     <Empty v-if="!subscriptionPlans.length" :text="t('noSubscriptionPlans')" />
   </section>
 
-  <Dialog :open="showPlanModal" @update:open="v => !v && (showPlanModal = false)">
-    <DialogContent class="sm:max-w-lg">
-      <DialogHeader>
-        <DialogTitle>{{ editingPlanID ? t('editPlan') : t('createPlan') }}</DialogTitle>
-      </DialogHeader>
-      <form class="grid gap-4" @submit.prevent="savePlan">
+  <Sheet :open="showPlanModal" @update:open="v => !v && (showPlanModal = false)">
+    <SheetContent side="right" class="w-full overflow-y-auto sm:max-w-lg">
+      <SheetHeader>
+        <SheetTitle>{{ editingPlanID ? t('editPlan') : t('createPlan') }}</SheetTitle>
+        <SheetDescription class="sr-only">{{ editingPlanID ? t('editPlan') : t('createPlan') }}</SheetDescription>
+      </SheetHeader>
+      <form class="grid gap-4 px-6 pb-6" @submit.prevent="savePlan">
         <div class="flex flex-col gap-2">
           <Label>{{ t('planName') }}</Label>
           <Input v-model="subscriptionPlanForm.name" required maxlength="100" />
@@ -127,10 +128,10 @@ const selectClass = 'flex h-9 w-full rounded-md border border-input bg-transpare
           <Checkbox id="plan-enabled" :model-value="subscriptionPlanForm.enabled" @update:model-value="v => subscriptionPlanForm.enabled = !!v" />
           <Label for="plan-enabled">{{ t('enabled') }}</Label>
         </div>
-        <DialogFooter>
+        <SheetFooter>
           <Button type="submit" :disabled="busy" class="w-full">{{ t('saveLabel') }}</Button>
-        </DialogFooter>
+        </SheetFooter>
       </form>
-    </DialogContent>
-  </Dialog>
+    </SheetContent>
+  </Sheet>
 </template>
