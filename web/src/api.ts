@@ -109,10 +109,31 @@ export interface AdminSubscription {
   updated_at: string
 }
 
-let token = import.meta.client ? sessionStorage.getItem('xinghai.admin-token') ?? '' : ''
+const TOKEN_COOKIE = 'xinghai.admin-token'
+const TOKEN_MAX_AGE = 60 * 60 * 24 * 7
+
+function readCookie(name: string): string {
+  if (typeof document === 'undefined') return ''
+  const prefix = `${name}=`
+  const match = document.cookie.split('; ').find((entry) => entry.startsWith(prefix))
+  return match ? decodeURIComponent(match.slice(prefix.length)) : ''
+}
+
+function writeCookie(name: string, value: string, maxAge: number): void {
+  if (typeof document === 'undefined') return
+  const encoded = encodeURIComponent(value.trim())
+  document.cookie = `${name}=${encoded}; path=/; max-age=${maxAge}; samesite=strict`
+}
+
+function deleteCookie(name: string): void {
+  if (typeof document === 'undefined') return
+  document.cookie = `${name}=; path=/; max-age=0; samesite=strict`
+}
+
+let token = import.meta.client ? readCookie(TOKEN_COOKIE) : ''
 export const getToken = () => token
-export const setToken = (value: string) => { token = value.trim(); sessionStorage.setItem('xinghai.admin-token', token) }
-export const clearToken = () => { token = ''; sessionStorage.removeItem('xinghai.admin-token') }
+export const setToken = (value: string) => { token = value.trim(); writeCookie(TOKEN_COOKIE, token, TOKEN_MAX_AGE) }
+export const clearToken = () => { token = ''; deleteCookie(TOKEN_COOKIE) }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers } })
@@ -122,4 +143,88 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
+}
+
+async function get<T>(path: string): Promise<T> { return api<T>(path) }
+async function post<T>(path: string, body?: unknown): Promise<T> { return api<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }) }
+async function put<T>(path: string, body?: unknown): Promise<T> { return api<T>(path, { method: 'PUT', body: body === undefined ? undefined : JSON.stringify(body) }) }
+async function send(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<void> { await api<unknown>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) }) }
+
+export interface LoginBody { email: string; password: string; code?: string; lot_number?: string; captcha_output?: string; pass_token?: string; gen_time?: string }
+export interface RegisterBody { name: string; email: string; password: string; code?: string; lot_number?: string; captcha_output?: string; pass_token?: string; gen_time?: string }
+export interface KeyForm { user_id?: string; name: string; expires_at: string; group_id: string }
+export interface AccountKeyForm { name: string; expires_at: string; group_id: string }
+export interface ChannelForm { name: string; provider: string; base_url: string; api_key: string; models: string[]; priority: number; groups: string[] }
+export interface ProviderForm { name: string; slug: string; prefixes: string[]; priority: number; id?: string }
+export interface PaymentSettingsForm { enabled: boolean; base_url: string; merchant_id: string; merchant_key: string; public_base_url: string }
+export interface PaymentMethodForm { code: string; name: string; enabled: boolean }
+export interface PricingForm { model: string; input_per_million: number; cached_input_per_million: number; output_per_million: number; multiplier: number }
+export interface NewApiPricingForm { base_url: string; api_key: string; price_per_quota_unit: number }
+export interface SubscriptionPlanForm { name: string; description: string; price: string; currency: string; billing_period: string; credit_amount: string; group_id: string; model_whitelist: string[]; max_requests_per_period: number | null; max_tokens_per_period: number | null; sort_order: number; enabled: boolean }
+export interface UserUpdate { name?: string; email?: string; role?: string; enabled?: boolean; password?: string; balance?: number | null; note?: string; permissions?: string[]; groups?: string[] }
+
+export const endpoints = {
+  getSiteSettings: () => get<SiteSettings>('/site-settings'),
+  getAccount: () => get<Account>('/account/me'),
+  getAccountKeys: () => get<{ data: ApiKey[] }>('/account/keys'),
+  getAccountUsage: () => get<{ data: UsageRecord[] }>('/account/usage'),
+  getAccountLedger: () => get<{ data: LedgerEntry[] }>('/account/ledger'),
+  getAccountGroups: () => get<{ data: string[]; groups: Group[] }>('/account/groups'),
+  getAccountPayments: () => get<{ enabled: boolean; payment_methods: PaymentMethod[]; data: PaymentOrder[] }>('/account/payments'),
+  getAccountPayment: (orderNo: string) => get<PaymentOrder>(`/account/payments/${encodeURIComponent(orderNo)}`),
+  createAccountPayment: (amount: string, type: string) => post<{ pay_url: string }>('/account/payments', { amount, type }),
+  getAccountSubscriptions: () => get<{ data: UserSubscription[] }>('/account/subscriptions'),
+  createAccountSubscription: (planId: string, paymentType: string, autoRenew: boolean) => post<{ pay_url: string }>('/account/subscriptions', { plan_id: planId, payment_type: paymentType, auto_renew: autoRenew }),
+  cancelAccountSubscription: (id: string) => send(`/account/subscriptions/${encodeURIComponent(id)}/cancel`, 'POST'),
+  getAccountSubscriptionOrders: () => get<{ data: SubscriptionOrder[] }>('/account/subscription-orders'),
+  getAccountSubscriptionOrder: (orderNo: string) => get<SubscriptionOrder>(`/account/subscription-orders/${encodeURIComponent(orderNo)}`),
+  updateAccountProfile: (avatarUrl: string) => send('/account/profile', 'PUT', { avatar_url: avatarUrl }),
+  updateAccountPreferences: (leaderboardOptIn: boolean, leaderboardMaskName: boolean) => send('/account/preferences', 'PUT', { leaderboard_opt_in: leaderboardOptIn, leaderboard_mask_name: leaderboardMaskName }),
+  createAccountKey: (form: AccountKeyForm) => post<{ key: string }>('/account/keys', form),
+  updateAccountKey: (id: string, form: AccountKeyForm) => send(`/account/keys/${encodeURIComponent(id)}`, 'PUT', form),
+
+  getActivityLogs: (query = '') => get<{ data: ActivityLog[] }>(`/activity-logs${query}`),
+  getModelCatalog: () => get<{ data: CatalogModel[]; groups: CatalogGroup[] }>('/model-catalog'),
+  getPublicSubscriptionPlans: () => get<{ data: PublicSubscriptionPlan[] }>('/subscription-plans'),
+
+  login: (body: LoginBody) => post<{ token: string }>('/auth/login', body),
+  register: (body: RegisterBody) => post<{ token: string }>('/auth/register', body),
+  logout: () => send('/auth/logout', 'POST'),
+  sendEmailCode: (email: string, captcha?: Record<string, string>) => send('/auth/email-code', 'POST', { email, ...captcha }),
+
+  getAdminUsers: () => get<{ data: User[] }>('/admin/users'),
+  updateUser: (id: string, update: UserUpdate) => send(`/admin/users/${encodeURIComponent(id)}`, 'PUT', update),
+  getAdminGroups: () => get<{ data: Group[] }>('/admin/groups'),
+  createGroup: (name: string, multiplier: number) => send('/admin/groups', 'POST', { name, multiplier }),
+  updateGroup: (id: string, multiplier: number) => send(`/admin/groups/${encodeURIComponent(id)}`, 'PUT', { multiplier }),
+  importGroups: (entries: Record<string, number>) => send('/admin/groups/import', 'POST', entries),
+  getAdminKeys: () => get<{ data: ApiKey[] }>('/admin/keys'),
+  createKey: (form: KeyForm) => post<{ key: string }>('/admin/keys', form),
+  revokeKey: (id: string) => send(`/admin/keys/${encodeURIComponent(id)}/revoke`, 'POST'),
+  getAdminChannels: () => get<{ data: Channel[] }>('/admin/channels'),
+  createChannel: (form: ChannelForm) => send('/admin/channels', 'POST', form),
+  fetchChannelModels: (baseUrl: string, apiKey: string) => post<{ models: string[] }>('/admin/channels/models', { base_url: baseUrl, api_key: apiKey }),
+  updateChannel: (id: string, form: ChannelForm) => send(`/admin/channels/${encodeURIComponent(id)}`, 'PUT', form),
+  updateChannelGroups: (id: string, groups: string[]) => send(`/admin/channels/${encodeURIComponent(id)}/groups`, 'PUT', { groups }),
+  toggleChannel: (id: string, enabled: boolean) => send(`/admin/channels/${encodeURIComponent(id)}/status`, 'POST', { enabled }),
+  getAdminProviders: () => get<{ data: ModelProvider[] }>('/admin/providers'),
+  saveProvider: (form: ProviderForm) => send('/admin/providers', 'POST', form),
+  removeProvider: (id: string) => send(`/admin/providers/${encodeURIComponent(id)}`, 'DELETE'),
+  getAdminPricing: () => get<{ data: Pricing[] }>('/admin/pricing'),
+  savePricing: (form: PricingForm) => send('/admin/pricing', 'POST', form),
+  syncNewApiPricing: (form: NewApiPricingForm) => post<{ synced: number }>('/admin/pricing/newapi/sync', form),
+  getAdminReliabilitySettings: () => get<ReliabilitySettings>('/admin/reliability-settings'),
+  updateReliabilitySettings: (form: ReliabilitySettings) => put<ReliabilitySettings>('/admin/reliability-settings', form),
+  getAdminSiteSettings: () => get<AdminSiteSettings>('/admin/site-settings'),
+  updateAdminSiteSettings: (form: AdminSiteSettings & { geetest_captcha_key: string; smtp_password: string }) => put<AdminSiteSettings>('/admin/site-settings', form),
+  getAdminPaymentSettings: () => get<PaymentSettings>('/admin/payment-settings'),
+  updateAdminPaymentSettings: (form: PaymentSettingsForm) => put<PaymentSettings>('/admin/payment-settings', form),
+  createPaymentMethod: (form: PaymentMethodForm) => send('/admin/payment-methods', 'POST', form),
+  updatePaymentMethod: (id: string, form: PaymentMethodForm) => send(`/admin/payment-methods/${encodeURIComponent(id)}`, 'PUT', form),
+  deletePaymentMethod: (id: string) => send(`/admin/payment-methods/${encodeURIComponent(id)}`, 'DELETE'),
+  getAdminSubscriptionPlans: () => get<{ data: SubscriptionPlan[] }>('/admin/subscription-plans'),
+  createSubscriptionPlan: (form: SubscriptionPlanForm) => send('/admin/subscription-plans', 'POST', form),
+  updateSubscriptionPlan: (id: string, form: SubscriptionPlanForm) => send(`/admin/subscription-plans/${encodeURIComponent(id)}`, 'PUT', form),
+  deleteSubscriptionPlan: (id: string) => send(`/admin/subscription-plans/${encodeURIComponent(id)}`, 'DELETE'),
+  getAdminSubscriptions: () => get<{ data: AdminSubscription[] }>('/admin/subscriptions'),
 }

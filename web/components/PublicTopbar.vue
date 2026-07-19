@@ -2,6 +2,7 @@
 import { Bot, ChevronRight } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
 import { api, getToken, type SiteSettings } from '~/src/api'
+import { Button } from '@/components/ui/button'
 
 const props = withDefaults(defineProps<{
   siteName?: string
@@ -18,13 +19,13 @@ const selfAuthenticated = ref(false)
 onMounted(async () => {
   if (!props.siteName) {
     try {
-      const value = await api<SiteSettings>('/site-settings')
+      const value = await endpoints.getSiteSettings()
       fetchedName.value = value.name
     } catch { /* fall back to default name */ }
   }
   if (props.authenticated === undefined && getToken()) {
     try {
-      await api('/account/me')
+      await endpoints.getAccount()
       selfAuthenticated.value = true
     } catch {
       selfAuthenticated.value = false
@@ -56,7 +57,7 @@ function openConsoleOrAuth() {
         <option value="zh-CN">{{ t('chinese') }}</option>
         <option value="en-US">{{ t('english') }}</option>
       </select>
-      <button class="button ghost" @click="openConsoleOrAuth">{{ isAuthenticated ? t('console') : t('login') }} <ChevronRight :size="15" /></button>
+      <Button variant="ghost" @click="openConsoleOrAuth">{{ isAuthenticated ? t('console') : t('login') }} <ChevronRight :size="15" /></Button>
     </div>
   </nav>
 </template>

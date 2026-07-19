@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { Activity, Bot, ChevronRight, CircleAlert, Copy, KeyRound, Layers3, LayoutDashboard, LogOut, PanelLeftClose, PanelLeftOpen, RadioTower, RefreshCw, ShieldCheck, Sparkles, TerminalSquare, UserRound, Users, WalletCards, ReceiptText, Tags, Settings, Crown } from 'lucide-vue-next'
-import { api, clearToken, getToken, setToken } from '~/src/api'
+import { endpoints, clearToken, getToken, setToken } from '~/src/api'
 import ModelSquare from '~/components/marketplace/ModelSquare.vue'
 import type { Account, ActivityLog, AdminSiteSettings, AdminSubscription, ApiKey, CatalogGroup, CatalogModel, Channel, Group, LedgerEntry, ModelProvider, PaymentMethod, PaymentOrder, PaymentSettings, Pricing, PublicSubscriptionPlan, ReliabilitySettings, SiteSettings, SubscriptionOrder, SubscriptionPlan, UsageRecord, User, UserSubscription } from '~/src/api'
 import type { View } from '~/src/views'
@@ -103,7 +103,7 @@ const newAPIPricingForm = reactive({ base_url: '', api_key: '', price_per_quota_
 const loginMode = ref<'token' | 'login' | 'register'>('login')
 const accountForm = reactive({ name: '', email: '', password: '' })
 const leaderboardPrefs = reactive({ opt_in: true, mask_name: true })
-async function saveLeaderboardPrefs() { await action(async () => { await api('/account/preferences', { method: 'PUT', body: JSON.stringify({ leaderboard_opt_in: leaderboardPrefs.opt_in, leaderboard_mask_name: leaderboardPrefs.mask_name }) }); if (account.value) { account.value.leaderboard_opt_in = leaderboardPrefs.opt_in; account.value.leaderboard_mask_name = leaderboardPrefs.mask_name } }) }
+async function saveLeaderboardPrefs() { await action(async () => { await endpoints.updateAccountPreferences(leaderboardPrefs.opt_in, leaderboardPrefs.mask_name); if (account.value) { account.value.leaderboard_opt_in = leaderboardPrefs.opt_in; account.value.leaderboard_mask_name = leaderboardPrefs.mask_name } }) }
 // Geetest v4 CAPTCHA — loaded lazily the first time sign-in requires it.
 declare global { interface Window { initGeetest4?: (options: Record<string, unknown>, callback: (captcha: GeetestCaptcha) => void) => void } }
 interface GeetestCaptcha { onReady(fn: () => void): void; onSuccess(fn: () => void): void; onClose(fn: () => void): void; onError(fn: (cause: unknown) => void): void; showCaptcha(): void; getValidate(): Record<string, string> | null }
@@ -126,7 +126,7 @@ async function sendEmailCode() {
   if (siteSettings.value.geetest_enabled) { try { await ensureGeetest(); captcha = await runGeetest() } catch { return } }
   codeSending.value = true
   try {
-    await api('/auth/email-code', { method: 'POST', body: JSON.stringify({ email: accountForm.email.trim(), ...captcha }) })
+    await endpoints.sendEmailCode(accountForm.email.trim(), captcha)
     codeSentHint.value = t('codeSent')
     codeCountdown.value = 60
     window.clearInterval(codeTimer)
@@ -240,7 +240,7 @@ const activityDetail = (item: ActivityLog) => item.type === 'request' ? `${item.
 async function loadActivity(filters = false) {
   const query = new URLSearchParams()
   if (filters) Object.entries(activityFilters).forEach(([key, value]) => { if (value) query.set(key, key === 'start' || key === 'end' ? new Date(value).toISOString() : value) })
-  const value = await api<{ data: ActivityLog[] }>(`/activity-logs${query.size ? `?${query}` : ''}`)
+  const value = await endpoints.getActivityLogs(query.size ? `?${query}` : '')
   activityLogs.value = value.data
   if (!filters) activityModels.value = [...new Set(value.data.map((item) => item.model).filter(Boolean))].sort()
 }
@@ -250,12 +250,12 @@ async function resetActivityFilters() { Object.assign(activityFilters, { user_id
 // Core account + site settings. Always loaded on entry; cheap and required by
 // the sidebar, header and most views.
 async function loadCore() {
-  const [settings, me] = await Promise.all([api<SiteSettings>('/site-settings'), api<Account>('/account/me')])
+  const [settings, me] = await Promise.all([endpoints.getSiteSettings(), endpoints.getAccount()])
   siteSettings.value = settings
   Object.assign(siteSettingsForm, settings)
   account.value = me
   leaderboardPrefs.opt_in = me.leaderboard_opt_in; leaderboardPrefs.mask_name = me.leaderboard_mask_name
-  const ownGroupValue = await api<{ data: string[]; groups: Group[] }>('/account/groups').catch(() => ({ data: [], groups: [] }))
+  const ownGroupValue = await endpoints.getAccountGroups().catch(() => ({ data: [], groups: [] }))
   ownGroups.value = ownGroupValue.data
   if (!can('users.read')) groups.value = ownGroupValue.groups
 }
@@ -264,17 +264,17 @@ async function loadCore() {
 // `keys`/`usage`/`ledger`/`payments`/`subscriptions`/`subscription-orders`/`activity`.
 async function loadPersonal() {
   const [ownKeys, ownUsage, ownLedger, ownPayments] = await Promise.all([
-    api<{ data: ApiKey[] }>('/account/keys').catch(() => ({ data: [] })),
-    api<{ data: UsageRecord[] }>('/account/usage').catch(() => ({ data: [] })),
-    api<{ data: LedgerEntry[] }>('/account/ledger').catch(() => ({ data: [] })),
-    api<{ enabled: boolean; payment_methods: PaymentMethod[]; data: PaymentOrder[] }>('/account/payments').catch(() => ({ enabled: false, payment_methods: [], data: [] })),
+    endpoints.getAccountKeys().catch(() => ({ data: [] })),
+    endpoints.getAccountUsage().catch(() => ({ data: [] })),
+    endpoints.getAccountLedger().catch(() => ({ data: [] })),
+    endpoints.getAccountPayments().catch(() => ({ enabled: false, payment_methods: [], data: [] })),
   ])
   accountKeys.value = ownKeys.data; usageRecords.value = ownUsage.data; ledger.value = ownLedger.data
   paymentsEnabled.value = ownPayments.enabled; payments.value = ownPayments.data; paymentMethods.value = ownPayments.payment_methods ?? []
   if (!paymentMethods.value.some((method) => method.code === paymentForm.type)) paymentForm.type = paymentMethods.value[0]?.code ?? ''
   const [ownSubs, ownSubOrders] = await Promise.all([
-    api<{ data: UserSubscription[] }>('/account/subscriptions').catch(() => ({ data: [] as UserSubscription[] })),
-    api<{ data: SubscriptionOrder[] }>('/account/subscription-orders').catch(() => ({ data: [] as SubscriptionOrder[] })),
+    endpoints.getAccountSubscriptions().catch(() => ({ data: [] as UserSubscription[] })),
+    endpoints.getAccountSubscriptionOrders().catch(() => ({ data: [] as SubscriptionOrder[] })),
   ])
   userSubscriptions.value = ownSubs.data
   subscriptionOrders.value = ownSubOrders.data
@@ -283,25 +283,25 @@ async function loadPersonal() {
 
 async function loadUsersAndGroups() {
   if (!can('users.read')) return
-  const [userValue, groupValue] = await Promise.all([api<{ data: User[] }>('/admin/users'), api<{ data: Group[] }>('/admin/groups')])
+  const [userValue, groupValue] = await Promise.all([endpoints.getAdminUsers(), endpoints.getAdminGroups()])
   users.value = userValue.data; groups.value = groupValue.data
 }
-async function loadAdminKeys() { if (can('keys.manage')) keys.value = (await api<{ data: ApiKey[] }>('/admin/keys')).data }
-async function loadAdminChannels() { if (can('channels.read')) channels.value = (await api<{ data: Channel[] }>('/admin/channels')).data }
-async function loadProviders() { if (can('system.manage')) providers.value = (await api<{ data: ModelProvider[] }>('/admin/providers')).data }
+async function loadAdminKeys() { if (can('keys.manage')) keys.value = (await endpoints.getAdminKeys()).data }
+async function loadAdminChannels() { if (can('channels.read')) channels.value = (await endpoints.getAdminChannels()).data }
+async function loadProviders() { if (can('system.manage')) providers.value = (await endpoints.getAdminProviders()).data }
 async function loadPaymentSettings() {
   if (!can('system.manage')) return
-  const value = await api<PaymentSettings>('/admin/payment-settings')
+  const value = await endpoints.getAdminPaymentSettings()
   Object.assign(paymentSettings, value)
   Object.assign(paymentSettingsForm, { enabled: value.enabled, base_url: value.base_url, merchant_id: value.merchant_id, merchant_key: '', public_base_url: value.public_base_url })
 }
-async function loadPricing() { if (can('pricing.read')) pricing.value = (await api<{ data: Pricing[] }>('/admin/pricing')).data }
-async function loadReliability() { if (can('system.manage')) Object.assign(reliabilityForm, await api<ReliabilitySettings>('/admin/reliability-settings')) }
-async function loadSubscriptionPlans() { if (can('system.manage')) subscriptionPlans.value = (await api<{ data: SubscriptionPlan[] }>('/admin/subscription-plans')).data }
-async function loadAdminSubscriptions() { if (can('users.read')) adminSubscriptions.value = (await api<{ data: AdminSubscription[] }>('/admin/subscriptions')).data }
+async function loadPricing() { if (can('pricing.read')) pricing.value = (await endpoints.getAdminPricing()).data }
+async function loadReliability() { if (can('system.manage')) Object.assign(reliabilityForm, await endpoints.getAdminReliabilitySettings()) }
+async function loadSubscriptionPlans() { if (can('system.manage')) subscriptionPlans.value = (await endpoints.getAdminSubscriptionPlans()).data }
+async function loadAdminSubscriptions() { if (can('users.read')) adminSubscriptions.value = (await endpoints.getAdminSubscriptions()).data }
 async function loadAdminSiteSettings() {
   if (!can('system.manage')) return
-  const value = await api<AdminSiteSettings>('/admin/site-settings')
+  const value = await endpoints.getAdminSiteSettings()
   Object.assign(siteSettingsForm, value); siteSettingsForm.geetest_captcha_key = ''; siteSettingsForm.smtp_password = ''
 }
 
@@ -356,62 +356,62 @@ watch(view, async (next) => {
   busy.value = true; error.value = ''
   try { await loadView(next) } catch (cause) { error.value = cause instanceof Error ? cause.message : t('loadFailed') } finally { busy.value = false }
 })
-async function loadSiteSettings() { const value = await api<SiteSettings>('/site-settings'); siteSettings.value = value; Object.assign(siteSettingsForm, value); document.title = value.name; const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'icon' })); if (value.icon_url) link.href = value.icon_url; else link.removeAttribute('href') }
-async function saveSiteSettings() { await action(async () => { const value = await api<AdminSiteSettings>('/admin/site-settings', { method: 'PUT', body: JSON.stringify(siteSettingsForm) }); Object.assign(siteSettingsForm, value); siteSettingsForm.geetest_captcha_key = ''; siteSettingsForm.smtp_password = ''; await loadSiteSettings() }) }
-async function saveReliabilitySettings() { await action(async () => { const value = await api<ReliabilitySettings>('/admin/reliability-settings', { method: 'PUT', body: JSON.stringify(reliabilityForm) }); Object.assign(reliabilityForm, value) }) }
-async function loadCatalog() { try { const value = await api<{ data: CatalogModel[]; groups: CatalogGroup[] }>('/model-catalog'); catalog.value = value.data; catalogGroups.value = value.groups } finally { catalogLoaded.value = true } }
-async function accountSignIn(register: boolean) { let captcha: Record<string, string> = {}; const emailVerify = register && siteSettings.value.email_verification_enabled; if (siteSettings.value.geetest_enabled && !emailVerify) { try { await ensureGeetest(); captcha = await runGeetest() } catch { return } } await action(async () => { const result = await api<{ token: string }>(register ? '/auth/register' : '/auth/login', { method: 'POST', body: JSON.stringify({ ...(register ? accountForm : { email: accountForm.email, password: accountForm.password }), ...(emailVerify ? { code: emailCode.value.trim() } : {}), ...captcha }) }); setToken(result.token); authenticated.value = true; await load(); await router.replace({ path: '/console', query: { view: managementNav.value.length ? 'overview' : 'account' } }) }) }
-async function signOut() { try { await api('/auth/logout', { method: 'POST' }) } catch { /* Local session removal is sufficient when the server is unreachable. */ } clearToken(); authenticated.value = false; error.value = ''; await router.replace('/') }
-async function createKey() { await action(async () => { const response = await api<{ key: string }>('/admin/keys', { method: 'POST', body: JSON.stringify({ ...keyForm, expires_at: keyForm.expires_at ? new Date(keyForm.expires_at).toISOString() : '' }) }); createdKey.value = response.key; showKey.value = false; Object.assign(keyForm, { user_id: '', name: '', expires_at: '', group_id: '' }); await load() }) }
-async function createAccountKey() { await action(async () => { const response = await api<{ key: string }>('/account/keys', { method: 'POST', body: JSON.stringify({ ...accountKeyForm, expires_at: accountKeyForm.expires_at ? new Date(accountKeyForm.expires_at).toISOString() : '' }) }); createdKey.value = response.key; showAccountKey.value = false; Object.assign(accountKeyForm, { name: '', expires_at: '', group_id: '' }); await load() }) }
+async function loadSiteSettings() { const value = await endpoints.getSiteSettings(); siteSettings.value = value; Object.assign(siteSettingsForm, value); document.title = value.name; const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'icon' })); if (value.icon_url) link.href = value.icon_url; else link.removeAttribute('href') }
+async function saveSiteSettings() { await action(async () => { const value = await endpoints.updateAdminSiteSettings(siteSettingsForm); Object.assign(siteSettingsForm, value); siteSettingsForm.geetest_captcha_key = ''; siteSettingsForm.smtp_password = ''; await loadSiteSettings() }) }
+async function saveReliabilitySettings() { await action(async () => { const value = await endpoints.updateReliabilitySettings(reliabilityForm); Object.assign(reliabilityForm, value) }) }
+async function loadCatalog() { try { const value = await endpoints.getModelCatalog(); catalog.value = value.data; catalogGroups.value = value.groups } finally { catalogLoaded.value = true } }
+async function accountSignIn(register: boolean) { let captcha: Record<string, string> = {}; const emailVerify = register && siteSettings.value.email_verification_enabled; if (siteSettings.value.geetest_enabled && !emailVerify) { try { await ensureGeetest(); captcha = await runGeetest() } catch { return } } await action(async () => { const body = register ? { ...accountForm, ...(emailVerify ? { code: emailCode.value.trim() } : {}), ...captcha } : { email: accountForm.email, password: accountForm.password, ...(emailVerify ? { code: emailCode.value.trim() } : {}), ...captcha }; const result = register ? await endpoints.register(body) : await endpoints.login(body); setToken(result.token); authenticated.value = true; await load(); await router.replace({ path: '/console', query: { view: managementNav.value.length ? 'overview' : 'account' } }) }) }
+async function signOut() { try { await endpoints.logout() } catch { /* Local session removal is sufficient when the server is unreachable. */ } clearToken(); authenticated.value = false; error.value = ''; await router.replace('/') }
+async function createKey() { await action(async () => { const response = await endpoints.createKey({ ...keyForm, expires_at: keyForm.expires_at ? new Date(keyForm.expires_at).toISOString() : '' }); createdKey.value = response.key; showKey.value = false; Object.assign(keyForm, { user_id: '', name: '', expires_at: '', group_id: '' }); await load() }) }
+async function createAccountKey() { await action(async () => { const response = await endpoints.createAccountKey({ ...accountKeyForm, expires_at: accountKeyForm.expires_at ? new Date(accountKeyForm.expires_at).toISOString() : '' }); createdKey.value = response.key; showAccountKey.value = false; Object.assign(accountKeyForm, { name: '', expires_at: '', group_id: '' }); await load() }) }
 function editAccountKey(key: ApiKey) { editingAccountKey.value = key; Object.assign(accountKeyForm, { name: key.name, expires_at: key.expires_at ? new Date(key.expires_at).toISOString().slice(0, 16) : '', group_id: key.group_id }) }
-async function updateAccountKey() { if (!editingAccountKey.value) return; await action(async () => { await api(`/account/keys/${editingAccountKey.value.id}`, { method: 'PUT', body: JSON.stringify({ ...accountKeyForm, expires_at: accountKeyForm.expires_at ? new Date(accountKeyForm.expires_at).toISOString() : '' }) }); editingAccountKey.value = null; Object.assign(accountKeyForm, { name: '', expires_at: '', group_id: '' }); await load() }) }
-async function fetchChannelModels() { await action(async () => { const response = await api<{ models: string[] }>('/admin/channels/models', { method: 'POST', body: JSON.stringify({ base_url: channelForm.base_url, api_key: channelForm.api_key }) }); channelForm.models = response.models.join(', ');     if (!response.models.length) throw new Error(t('upstreamNoModels')) }) }
-async function createChannel() { await action(async () => { await api('/admin/channels', { method: 'POST', body: JSON.stringify({ ...channelForm, models: channelForm.models.split(',').map((value) => value.trim()).filter(Boolean) }) }); showChannel.value = false; Object.assign(channelForm, { name: '', provider: 'openai', base_url: 'https://api.openai.com', api_key: '', models: '', priority: 100, groups: [] }); await load() }) }
+async function updateAccountKey() { if (!editingAccountKey.value) return; await action(async () => { await endpoints.updateAccountKey(editingAccountKey.value.id, { ...accountKeyForm, expires_at: accountKeyForm.expires_at ? new Date(accountKeyForm.expires_at).toISOString() : '' }); editingAccountKey.value = null; Object.assign(accountKeyForm, { name: '', expires_at: '', group_id: '' }); await load() }) }
+async function fetchChannelModels() { await action(async () => { const response = await endpoints.fetchChannelModels(channelForm.base_url, channelForm.api_key); channelForm.models = response.models.join(', ');     if (!response.models.length) throw new Error(t('upstreamNoModels')) }) }
+async function createChannel() { await action(async () => { await endpoints.createChannel({ ...channelForm, models: channelForm.models.split(',').map((value) => value.trim()).filter(Boolean) }); showChannel.value = false; Object.assign(channelForm, { name: '', provider: 'openai', base_url: 'https://api.openai.com', api_key: '', models: '', priority: 100, groups: [] }); await load() }) }
 function editChannel(channel: Channel) { editingChannel.value = channel; Object.assign(channelForm, { name: channel.name, provider: channel.provider, base_url: channel.base_url, api_key: '', models: channel.models.join(', '), priority: channel.priority, groups: [...channel.groups] }) }
-async function updateChannel() { if (!editingChannel.value) return; await action(async () => { const models = channelForm.models.split(',').map((value) => value.trim()).filter(Boolean); await api(`/admin/channels/${editingChannel.value.id}`, { method: 'PUT', body: JSON.stringify({ ...channelForm, models }) }); await api(`/admin/channels/${editingChannel.value.id}/groups`, { method: 'PUT', body: JSON.stringify({ groups: channelForm.groups }) }); editingChannel.value = null; Object.assign(channelForm, { name: '', provider: 'openai', base_url: 'https://api.openai.com', api_key: '', models: '', priority: 100, groups: [] }); await load() }) }
-async function saveProvider() { await action(async () => { await api('/admin/providers', { method: 'POST', body: JSON.stringify({ ...providerForm, id: editingProviderID.value || undefined, prefixes: providerForm.prefixes.split(',').map((value) => value.trim()).filter(Boolean) }) }); showProvider.value = false; editingProviderID.value = ''; Object.assign(providerForm, { name: '', slug: '', prefixes: '', priority: 100 }); await load() }) }
+async function updateChannel() { if (!editingChannel.value) return; await action(async () => { const models = channelForm.models.split(',').map((value) => value.trim()).filter(Boolean); await endpoints.updateChannel(editingChannel.value.id, { ...channelForm, models }); await endpoints.updateChannelGroups(editingChannel.value.id, channelForm.groups); editingChannel.value = null; Object.assign(channelForm, { name: '', provider: 'openai', base_url: 'https://api.openai.com', api_key: '', models: '', priority: 100, groups: [] }); await load() }) }
+async function saveProvider() { await action(async () => { await endpoints.saveProvider({ ...providerForm, id: editingProviderID.value || undefined, prefixes: providerForm.prefixes.split(',').map((value) => value.trim()).filter(Boolean) }); showProvider.value = false; editingProviderID.value = ''; Object.assign(providerForm, { name: '', slug: '', prefixes: '', priority: 100 }); await load() }) }
 function openProvider() { editingProviderID.value = ''; Object.assign(providerForm, { name: '', slug: '', prefixes: '', priority: 100 }); showProvider.value = true }
 function editProvider(provider: ModelProvider) { editingProviderID.value = provider.id; Object.assign(providerForm, { name: provider.name, slug: provider.slug, prefixes: provider.prefixes.join(', '), priority: provider.priority }); showProvider.value = true }
-async function removeProvider(provider: ModelProvider) { if (!confirm(t('deleteProviderConfirm').replace('{name}', provider.name))) return; await action(async () => { await api(`/admin/providers/${provider.id}`, { method: 'DELETE' }); await load() }) }
-async function createGroup() { const name = groupForm.name.trim(); const multiplier = Number(groupForm.multiplier);     if (!name) { error.value = t('enterGroupName'); return } if (!Number.isFinite(multiplier) || multiplier <= 0) { error.value = t('multiplierMustBePositive'); return } await action(async () => { await api('/admin/groups', { method: 'POST', body: JSON.stringify({ name, multiplier }) }); Object.assign(groupForm, { name: '', multiplier: 1 }); await load() }) }
-async function editGroupMultiplier(group: Group, event: Event) { const multiplier = Number(new FormData(event.currentTarget as HTMLFormElement).get('multiplier'));     if (!Number.isFinite(multiplier) || multiplier < 0) { error.value = t('multiplierMustBeNonNegative'); return } await action(async () => { await api(`/admin/groups/${group.id}`, { method: 'PUT', body: JSON.stringify({ multiplier }) }); await load() }) }
-async function importGroups() { let values: Record<string, unknown>; try { values = JSON.parse(groupImportText.value) } catch { error.value = t('enterValidJSON'); return } if (!values || Array.isArray(values) || typeof values !== 'object') { error.value = t('importMustBeGroupMultiplierJSON'); return } const entries = Object.entries(values); if (!entries.length || entries.some(([name, multiplier]) => !name.trim() || typeof multiplier !== 'number' || !Number.isFinite(multiplier) || multiplier < 0)) { error.value = t('groupNameRequiredMultiplierNonNegative'); return } await action(async () => { await api('/admin/groups/import', { method: 'POST', body: JSON.stringify(values) }); groupImportText.value = ''; await load() }) }
-async function toggleChannel(channel: Channel) { await action(async () => { await api(`/admin/channels/${channel.id}/status`, { method: 'POST', body: JSON.stringify({ enabled: !channel.enabled }) }); await load() }) }
-async function revokeKey(key: ApiKey) { if (!confirm(t('revokeKeyConfirm').replace('{prefix}', key.key_prefix))) return; await action(async () => { await api(`/admin/keys/${key.id}/revoke`, { method: 'POST' }); await load() }) }
+async function removeProvider(provider: ModelProvider) { if (!confirm(t('deleteProviderConfirm').replace('{name}', provider.name))) return; await action(async () => { await endpoints.removeProvider(provider.id); await load() }) }
+async function createGroup() { const name = groupForm.name.trim(); const multiplier = Number(groupForm.multiplier);     if (!name) { error.value = t('enterGroupName'); return } if (!Number.isFinite(multiplier) || multiplier <= 0) { error.value = t('multiplierMustBePositive'); return } await action(async () => { await endpoints.createGroup(name, multiplier); Object.assign(groupForm, { name: '', multiplier: 1 }); await load() }) }
+async function editGroupMultiplier(group: Group, event: Event) { const multiplier = Number(new FormData(event.currentTarget as HTMLFormElement).get('multiplier'));     if (!Number.isFinite(multiplier) || multiplier < 0) { error.value = t('multiplierMustBeNonNegative'); return } await action(async () => { await endpoints.updateGroup(group.id, multiplier); await load() }) }
+async function importGroups() { let values: Record<string, unknown>; try { values = JSON.parse(groupImportText.value) } catch { error.value = t('enterValidJSON'); return } if (!values || Array.isArray(values) || typeof values !== 'object') { error.value = t('importMustBeGroupMultiplierJSON'); return } const entries = Object.entries(values); if (!entries.length || entries.some(([name, multiplier]) => !name.trim() || typeof multiplier !== 'number' || !Number.isFinite(multiplier) || multiplier < 0)) { error.value = t('groupNameRequiredMultiplierNonNegative'); return } await action(async () => { await endpoints.importGroups(values as Record<string, number>); groupImportText.value = ''; await load() }) }
+async function toggleChannel(channel: Channel) { await action(async () => { await endpoints.toggleChannel(channel.id, !channel.enabled); await load() }) }
+async function revokeKey(key: ApiKey) { if (!confirm(t('revokeKeyConfirm').replace('{prefix}', key.key_prefix))) return; await action(async () => { await endpoints.revokeKey(key.id); await load() }) }
 async function action(work: () => Promise<void>) { busy.value = true; error.value = ''; try { await work() } catch (cause) { error.value = cause instanceof Error ? cause.message : t('operationFailed') } finally { busy.value = false } }
 async function createPayment() {
   const amount = Number(paymentForm.amount)
   if (!Number.isFinite(amount) || amount < 1 || amount > 100000) { error.value = t('paymentAmountRange'); return }
   await action(async () => {
-    const result = await api<{ pay_url: string }>('/account/payments', { method: 'POST', body: JSON.stringify({ amount: amount.toFixed(2), type: paymentForm.type }) })
+    const result = await endpoints.createAccountPayment(amount.toFixed(2), paymentForm.type)
     window.location.assign(result.pay_url)
   })
 }
-async function savePaymentSettings() { await action(async () => { const value = await api<PaymentSettings>('/admin/payment-settings', { method: 'PUT', body: JSON.stringify(paymentSettingsForm) }); Object.assign(paymentSettings, value); paymentSettingsForm.merchant_key = ''; await load() }) }
-async function createPaymentMethod() { await action(async () => { await api('/admin/payment-methods', { method: 'POST', body: JSON.stringify(paymentMethodForm) }); Object.assign(paymentMethodForm, { code: '', name: '', enabled: true }); await load() }) }
-async function updatePaymentMethod(method: PaymentMethod) { await action(async () => { await api(`/admin/payment-methods/${method.id}`, { method: 'PUT', body: JSON.stringify({ code: method.code, name: method.name, enabled: method.enabled }) }); await load() }) }
-async function deletePaymentMethod(method: PaymentMethod) { if (!confirm(t('deletePaymentMethodConfirm').replace('{name}', method.name))) return; await action(async () => { await api(`/admin/payment-methods/${method.id}`, { method: 'DELETE' }); await load() }) }
+async function savePaymentSettings() { await action(async () => { const value = await endpoints.updateAdminPaymentSettings(paymentSettingsForm); Object.assign(paymentSettings, value); paymentSettingsForm.merchant_key = ''; await load() }) }
+async function createPaymentMethod() { await action(async () => { await endpoints.createPaymentMethod(paymentMethodForm); Object.assign(paymentMethodForm, { code: '', name: '', enabled: true }); await load() }) }
+async function updatePaymentMethod(method: PaymentMethod) { await action(async () => { await endpoints.updatePaymentMethod(method.id, { code: method.code, name: method.name, enabled: method.enabled }); await load() }) }
+async function deletePaymentMethod(method: PaymentMethod) { if (!confirm(t('deletePaymentMethodConfirm').replace('{name}', method.name))) return; await action(async () => { await endpoints.deletePaymentMethod(method.id); await load() }) }
 async function copyKey() { await navigator.clipboard.writeText(createdKey.value) }
-async function savePricing() { await action(async () => { await api('/admin/pricing', { method: 'POST', body: JSON.stringify(pricingForm) }); Object.assign(pricingForm, { model: '', input_per_million: 0, cached_input_per_million: 0, output_per_million: 0, multiplier: 1 }); await load() }) }
-async function syncNewAPIPricing() { await action(async () => { const result = await api<{ synced: number }>('/admin/pricing/newapi/sync', { method: 'POST', body: JSON.stringify(newAPIPricingForm) }); await load(); error.value = t('syncPricingResult').replace('{count}', String(result.synced)) }) }
+async function savePricing() { await action(async () => { await endpoints.savePricing(pricingForm); Object.assign(pricingForm, { model: '', input_per_million: 0, cached_input_per_million: 0, output_per_million: 0, multiplier: 1 }); await load() }) }
+async function syncNewAPIPricing() { await action(async () => { const result = await endpoints.syncNewApiPricing(newAPIPricingForm); await load(); error.value = t('syncPricingResult').replace('{count}', String(result.synced)) }) }
 
-async function loadPublicPlans() { const value = await api<{ data: PublicSubscriptionPlan[] }>('/subscription-plans'); publicPlans.value = value.data }
+async function loadPublicPlans() { const value = await endpoints.getPublicSubscriptionPlans(); publicPlans.value = value.data }
 async function openSubscribeModal(plan: PublicSubscriptionPlan) { if (!paymentMethods.value.length) { error.value = t('paymentNotConfigured'); return } subscribingPlan.value = plan; subscribeForm.payment_type = paymentMethods.value[0]?.code ?? ''; subscribeForm.auto_renew = false; if (!publicPlans.value.length) await loadPublicPlans() }
 async function confirmSubscribe() {
   if (!subscribingPlan.value || !subscribeForm.payment_type) return
   await action(async () => {
-    const result = await api<{ pay_url: string }>('/account/subscriptions', { method: 'POST', body: JSON.stringify({ plan_id: subscribingPlan.value!.id, payment_type: subscribeForm.payment_type, auto_renew: subscribeForm.auto_renew }) })
+    const result = await endpoints.createAccountSubscription(subscribingPlan.value!.id, subscribeForm.payment_type, subscribeForm.auto_renew)
     subscribingPlan.value = null
     window.location.assign(result.pay_url)
   })
 }
-async function cancelSubscription(sub: UserSubscription) { if (!confirm(t('cancelSubscriptionConfirm'))) return; await action(async () => { await api(`/account/subscriptions/${sub.id}/cancel`, { method: 'POST' }); await load() }) }
+async function cancelSubscription(sub: UserSubscription) { if (!confirm(t('cancelSubscriptionConfirm'))) return; await action(async () => { await endpoints.cancelAccountSubscription(sub.id); await load() }) }
 async function savePlan() {
   await action(async () => {
     const payload = { name: subscriptionPlanForm.name, description: subscriptionPlanForm.description, price: subscriptionPlanForm.price, currency: subscriptionPlanForm.currency, billing_period: subscriptionPlanForm.billing_period, credit_amount: subscriptionPlanForm.credit_amount, group_id: subscriptionPlanForm.group_id, model_whitelist: subscriptionPlanForm.model_whitelist.split(',').map((v) => v.trim()).filter(Boolean), max_requests_per_period: subscriptionPlanForm.max_requests_per_period === '' ? null : Number(subscriptionPlanForm.max_requests_per_period), max_tokens_per_period: subscriptionPlanForm.max_tokens_per_period === '' ? null : Number(subscriptionPlanForm.max_tokens_per_period), sort_order: subscriptionPlanForm.sort_order, enabled: subscriptionPlanForm.enabled }
-    if (editingPlanID.value) await api(`/admin/subscription-plans/${editingPlanID.value}`, { method: 'PUT', body: JSON.stringify(payload) })
-    else await api('/admin/subscription-plans', { method: 'POST', body: JSON.stringify(payload) })
+    if (editingPlanID.value) await endpoints.updateSubscriptionPlan(editingPlanID.value, payload)
+    else await endpoints.createSubscriptionPlan(payload)
     showPlanModal.value = false; editingPlanID.value = ''
     Object.assign(subscriptionPlanForm, { name: '', description: '', price: '0', currency: 'CNY', billing_period: 'month', credit_amount: '0', group_id: '', model_whitelist: '', max_requests_per_period: '', max_tokens_per_period: '', sort_order: 0, enabled: true })
     await load()
@@ -419,7 +419,7 @@ async function savePlan() {
 }
 function openPlanModal() { editingPlanID.value = ''; Object.assign(subscriptionPlanForm, { name: '', description: '', price: '0', currency: 'CNY', billing_period: 'month', credit_amount: '0', group_id: '', model_whitelist: '', max_requests_per_period: '', max_tokens_per_period: '', sort_order: 0, enabled: true }); showPlanModal.value = true }
 function editPlan(plan: SubscriptionPlan) { editingPlanID.value = plan.id; Object.assign(subscriptionPlanForm, { name: plan.name, description: plan.description, price: plan.price, currency: plan.currency, billing_period: plan.billing_period, credit_amount: plan.credit_amount, group_id: plan.group_id, model_whitelist: plan.model_whitelist.join(', '), max_requests_per_period: plan.max_requests_per_period ?? '', max_tokens_per_period: plan.max_tokens_per_period ?? '', sort_order: plan.sort_order, enabled: plan.enabled }); showPlanModal.value = true }
-async function deletePlan(plan: SubscriptionPlan) { if (!confirm(t('deletePlanConfirm').replace('{name}', plan.name))) return; await action(async () => { await api(`/admin/subscription-plans/${plan.id}`, { method: 'DELETE' }); await load() }) }
+async function deletePlan(plan: SubscriptionPlan) { if (!confirm(t('deletePlanConfirm').replace('{name}', plan.name))) return; await action(async () => { await endpoints.deleteSubscriptionPlan(plan.id); await load() }) }
 function manageUser(user: User) { originalUser.value = user; selectedUser.value = { ...user }; selectedPermissions.value = [...user.permissions]; selectedGroups.value = [...(user.groups ?? [])]; userPassword.value = ''; userBalance.value = Number(user.balance ?? 0); userBalanceNote.value = '' }
 async function saveUserAccess() {
   if (!selectedUser.value || !originalUser.value) return
@@ -435,7 +435,7 @@ async function saveUserAccess() {
   if ([...selectedPermissions.value].sort().join('\n') !== [...original.permissions].sort().join('\n')) update.permissions = selectedPermissions.value
   if ([...selectedGroups.value].sort().join('\n') !== [...(original.groups ?? [])].sort().join('\n')) update.groups = selectedGroups.value
   if (!Object.keys(update).length) { selectedUser.value = null; originalUser.value = null; return }
-  await action(async () => { await api(`/admin/users/${current.id}`, { method: 'PUT', body: JSON.stringify(update) }); selectedUser.value = null; originalUser.value = null; await load() })
+  await action(async () => { await endpoints.updateUser(current.id, update as Parameters<typeof endpoints.updateUser>[1]); selectedUser.value = null; originalUser.value = null; await load() })
 }
 async function chooseAvatar(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
@@ -443,12 +443,12 @@ async function chooseAvatar(event: Event) {
   if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type) || file.size > 1.5 * 1024 * 1024) { error.value = t('avatarFileRequirements'); return }
   await action(async () => {
     const avatarURL = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error(t('avatarReadFailed'))); reader.readAsDataURL(file) })
-    await api('/account/profile', { method: 'PUT', body: JSON.stringify({ avatar_url: avatarURL }) })
+    await endpoints.updateAccountProfile(avatarURL)
     await load()
   })
   if (avatarInput.value) avatarInput.value.value = ''
 }
-async function removeAvatar() { await action(async () => { await api('/account/profile', { method: 'PUT', body: JSON.stringify({ avatar_url: '' }) }); await load() }) }
+async function removeAvatar() { await action(async () => { await endpoints.updateAccountProfile(''); await load() }) }
 async function saveAvatarUrl() {
   const url = avatarUrlInput.value.trim()
   if (!url) return
@@ -457,7 +457,7 @@ async function saveAvatarUrl() {
     if (!['http:', 'https:'].includes(parsed.protocol)) { error.value = t('avatarUrlInvalid'); return }
   } catch { error.value = t('avatarUrlInvalid'); return }
   await action(async () => {
-    await api('/account/profile', { method: 'PUT', body: JSON.stringify({ avatar_url: url }) })
+    await endpoints.updateAccountProfile(url)
     avatarUrlInput.value = ''
     await load()
   })
@@ -475,12 +475,12 @@ onMounted(async () => {
   const returnedOrder = typeof route.query.payment_order === 'string' ? route.query.payment_order : ''
   const returnedSubOrder = typeof route.query.order === 'string' ? route.query.order : ''
   if (returnedOrder) {
-    const order = await api<PaymentOrder>(`/account/payments/${encodeURIComponent(returnedOrder)}`).catch(() => null)
+    const order = await endpoints.getAccountPayment(returnedOrder).catch(() => null)
     paymentMessage.value = order?.status === 'paid' ? t('paymentPaid') : t('paymentPending')
     if (order?.status === 'paid') await load()
   }
   if (returnedSubOrder) {
-    const order = await api<SubscriptionOrder>(`/account/subscription-orders/${encodeURIComponent(returnedSubOrder)}`).catch(() => null)
+    const order = await endpoints.getAccountSubscriptionOrder(returnedSubOrder).catch(() => null)
     subscriptionMessage.value = order?.status === 'paid' ? t('subscriptionPaid') : t('subscriptionPending')
     if (order?.status === 'paid') await load()
   }
