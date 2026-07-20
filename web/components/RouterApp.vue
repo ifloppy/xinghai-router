@@ -15,9 +15,16 @@ const props = withDefaults(defineProps<{ activeView?: View }>(), { activeView: '
 const route = useRoute()
 const router = useRouter()
 const views: View[] = VIEWS
-const view = computed<View>(() => {
-  const selected = views.includes(route.query.view as View) ? route.query.view as View : props.activeView && views.includes(props.activeView) ? props.activeView : views.includes(route.params.view as View) ? route.params.view as View : 'overview'
+function resolveView(q: string | undefined, p: string | undefined): View {
+  const selected = views.includes(q as View) ? q as View : props.activeView && views.includes(props.activeView) ? props.activeView : views.includes(p as View) ? p as View : 'overview'
   return selected === 'logs' || selected === 'audit' || selected === 'usage-overview' ? 'usage' : selected
+}
+const currentView = ref<View>(resolveView(route.query.view as string | undefined, route.params.view as string | undefined))
+const view = computed(() => currentView.value)
+router.afterEach((to) => {
+  const q = to.query.view as string | undefined
+  const p = to.params.view as string | undefined
+  currentView.value = resolveView(q, p)
 })
 const authenticated = ref(false)
 const error = ref('')
@@ -466,7 +473,7 @@ async function saveAvatarUrl() {
   })
 }
 function openConsoleOrAuth() { router.push(authenticated.value ? '/console/overview' : '/auth') }
-function openConsole(nextView: string) { if (views.includes(nextView as View)) router.push({ path: '/console', query: { view: nextView } }) }
+function openConsole(nextView: string) { if (views.includes(nextView as View)) { currentView.value = nextView as View; router.push({ path: '/console', query: { view: nextView } }) } }
 onMounted(async () => {
   initializeLocale()
   document.addEventListener('selectionchange', updateErrorSelection)
