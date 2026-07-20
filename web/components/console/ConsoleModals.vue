@@ -184,7 +184,7 @@ const selectMultiClass = 'flex min-h-9 w-full rounded-md border border-input bg-
             <Label>{{ t('modelLabel') }} <span class="text-xs text-muted-foreground">{{ t('modelsCommaSeparated') }}</span></Label>
             <Input v-model="channelForm.models" required />
           </div>
-          <Button variant="link" type="button" class="w-fit px-0" :disabled="busy || !channelForm.api_key" @click="fetchChannelModels">{{ t('fetchUpstreamModels') }}</Button>
+          <Button variant="outline" type="button" size="sm" :disabled="busy || !channelForm.api_key" @click="fetchChannelModels">{{ t('fetchUpstreamModels') }}</Button>
           <div class="flex flex-col gap-2">
             <Label>{{ t('priorityLabel') }}</Label>
             <Input v-model.number="channelForm.priority" required type="number" min="0" />
