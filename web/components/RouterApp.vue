@@ -23,7 +23,7 @@ router.afterEach((to) => {
   const p = to.params.view as string | undefined
   currentView.value = resolveView(q, p)
 })
-const authenticated = ref(false)
+const authenticated = ref(Boolean(getToken()))
 const error = ref('')
 const busy = ref(false)
 const sidebarCollapsed = ref(false)
@@ -247,7 +247,6 @@ const VIEW_LOADERS: Partial<Record<View, (() => Promise<void>)[]>> = {
 }
 
 const loadedViews = ref<Set<View>>(new Set())
-const initialLoading = ref(true)
 async function loadView(targetView: View, force = false) {
   if (!force && loadedViews.value.has(targetView)) return
   loadedViews.value.add(targetView)
@@ -385,8 +384,8 @@ onMounted(async () => {
   initializeLocale()
   await loadSiteSettings().catch(() => undefined)
   authenticated.value = Boolean(getToken())
-  if (isMarketplacePage.value) { await loadCatalog().catch((cause) => { error.value = cause instanceof Error ? cause.message : t('loadFailed') }); initialLoading.value = false; return }
-  if (!authenticated.value) { initialLoading.value = false; return }
+  if (isMarketplacePage.value) { await loadCatalog().catch((cause) => { error.value = cause instanceof Error ? cause.message : t('loadFailed') }); return }
+  if (!authenticated.value) return
   await load()
   const returnedOrder = typeof route.query.payment_order === 'string' ? route.query.payment_order : ''
   const returnedSubOrder = typeof route.query.order === 'string' ? route.query.order : ''
@@ -405,7 +404,6 @@ onMounted(async () => {
     authenticated.value = false
     await router.replace('/auth')
   }
-  initialLoading.value = false
 })
 
 // --- View components (lazy-loaded) -----------------------------------------
@@ -474,11 +472,6 @@ provide(CONSOLE_STORE_KEY, {
 </script>
 
 <template>
-  <div v-if="initialLoading" class="flex min-h-screen items-center justify-center bg-background">
-    <span class="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-  </div>
-
-  <template v-else>
   <ErrorAlert />
   <LandingPage v-if="isLanding" :site-name="siteSettings.name" :authenticated="authenticated" @open-console-or-auth="openConsoleOrAuth" />
 
@@ -494,12 +487,9 @@ provide(CONSOLE_STORE_KEY, {
     <section class="flex flex-1 flex-col overflow-hidden">
       <ConsoleHeader />
       <div class="flex-1 overflow-y-auto p-4">
-        <Transition name="view-slide" mode="out-in">
-          <component :is="currentViewComponent" v-if="currentViewComponent" :key="view" />
-        </Transition>
+        <component :is="currentViewComponent" v-if="currentViewComponent" :key="view" />
         <ConsoleModals />
       </div>
     </section>
   </main>
-  </template>
 </template>

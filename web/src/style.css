@@ -2560,17 +2560,3 @@ td code {
 .code-send { flex: none; height: 46px; padding: 0 14px; white-space: nowrap; font-size: 12px; }
 .code-send:disabled { opacity: .55; cursor: default; }
 .code-hint { display: block; margin-top: 6px; color: hsl(var(--muted-foreground)); font-size: 11px; line-height: 1.5; }
-
-/* Console view slide transition */
-.view-slide-enter-active,
-.view-slide-leave-active {
-  transition: all 0.15s ease-out;
-}
-.view-slide-enter-from {
-  opacity: 0;
-  transform: translateX(14px);
-}
-.view-slide-leave-to {
-  opacity: 0;
-  transform: translateX(-8px);
-}
