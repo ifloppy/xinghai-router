@@ -1,6 +1,7 @@
 .env
 bin/
 router
+/migrate
 web/node_modules/
 web/dist/
 web/.nuxt/
