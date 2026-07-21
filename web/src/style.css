@@ -6,8 +6,6 @@
    `dark:` variant to that attribute instead of toggling a `.dark` class. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
-
 @font-face {
   font-family: 'Anthropic Sans';
   src: url('https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/cc27851ad-CFxw3nG7.woff2') format('woff2');

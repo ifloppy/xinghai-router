@@ -1,7 +1,10 @@
-import type { InjectionKey, Ref, ComputedRef } from 'vue'
+import type { Component, InjectionKey, Ref, ComputedRef } from 'vue'
 import type { Account, ActivityLog, AdminSiteSettings, AdminSubscription, ApiKey, CatalogGroup, CatalogModel, Channel, Group, LedgerEntry, ModelProvider, PaymentMethod, PaymentOrder, PaymentSettings, Pricing, PublicSubscriptionPlan, ReliabilitySettings, SiteSettings, SubscriptionOrder, SubscriptionPlan, UsageRecord, User, UserSubscription } from '~/src/api'
 import type { useI18n } from '~/composables/useI18n'
 import type { View } from '~/src/views'
+
+type NavItem = readonly [id: string, label: string, icon: Component]
+type ManagementNavItem = readonly [id: string, label: string, icon: Component, permission: string]
 
 /**
  * Shared store for the console shell.
@@ -32,6 +35,15 @@ export interface ConsoleStore {
   account: Ref<Account | null>
   can: (permission: string) => boolean
   isAdmin: ComputedRef<boolean>
+  signOut: () => Promise<void>
+
+  // Navigation sections (labels are localized computeds)
+  generalNav: ComputedRef<NavItem[]>
+  billingNav: ComputedRef<NavItem[]>
+  personalNav: ComputedRef<NavItem[]>
+  managementNav: ComputedRef<ManagementNavItem[]>
+  localizedManagementNavItems: ComputedRef<ManagementNavItem[]>
+  localizedAdminExtraNav: ComputedRef<ManagementNavItem[]>
 
   // Data refs
   users: Ref<User[]>

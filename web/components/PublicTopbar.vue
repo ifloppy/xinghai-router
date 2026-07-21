@@ -45,19 +45,22 @@ function openConsoleOrAuth() {
 </script>
 
 <template>
-  <nav class="landing-nav">
-    <a class="landing-logo" href="/"><span class="brand-mark small"><Bot :size="19" /></span><span>{{ displayName }}</span></a>
-    <div class="landing-links">
-      <a :href="featuresHref">{{ t('landingFeatures') }}</a>
-      <a href="/rankings">{{ t('rankings') }}</a>
-      <a :href="quickstartHref">{{ t('quickStart') }}</a>
-      <a href="/models">{{ t('marketplace') }}</a>
+  <nav class="mx-auto flex h-16 w-[min(1160px,calc(100%-48px))] items-center justify-between gap-4 sm:h-20 max-[700px]:h-[70px] max-[700px]:w-[min(100%-32px,560px)]">
+    <a class="flex min-w-0 shrink-0 items-center gap-2.5 font-extrabold tracking-tight text-foreground transition-opacity hover:opacity-80" href="/">
+      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[var(--radius-xl)] bg-primary text-primary-foreground shadow-md ring-1 ring-primary/10 transition-transform hover:scale-105 sm:h-11 sm:w-11"><Bot :size="20" /></span>
+      <span class="truncate">{{ displayName }}</span>
+    </a>
+    <div class="flex shrink-0 items-center gap-3 sm:gap-7">
+      <a class="whitespace-nowrap text-xs text-muted-foreground transition-colors hover:text-foreground max-[700px]:hidden" :href="featuresHref">{{ t('landingFeatures') }}</a>
+      <a class="whitespace-nowrap text-xs text-muted-foreground transition-colors hover:text-foreground max-[700px]:hidden" href="/rankings">{{ t('rankings') }}</a>
+      <a class="whitespace-nowrap text-xs text-muted-foreground transition-colors hover:text-foreground max-[700px]:hidden" :href="quickstartHref">{{ t('quickStart') }}</a>
+      <a class="whitespace-nowrap text-xs text-muted-foreground transition-colors hover:text-foreground max-[700px]:hidden" href="/models">{{ t('marketplace') }}</a>
       <ThemeCustomizer :locale="locale" />
-      <select v-model="locale" class="language-select" :aria-label="t('switchLanguage')">
+      <select v-model="locale" class="h-8 w-[68px] min-w-[68px] rounded-md border border-border bg-card px-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-1 focus-visible:ring-ring" :aria-label="t('switchLanguage')">
         <option value="zh-CN">{{ t('chinese') }}</option>
         <option value="en-US">{{ t('english') }}</option>
       </select>
-      <Button variant="ghost" @click="openConsoleOrAuth">{{ isAuthenticated ? t('console') : t('login') }} <ChevronRight :size="15" /></Button>
+      <Button variant="ghost" size="sm" class="shrink-0" @click="openConsoleOrAuth">{{ isAuthenticated ? t('console') : t('login') }} <ChevronRight :size="15" /></Button>
     </div>
   </nav>
 </template>

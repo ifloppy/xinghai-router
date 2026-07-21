@@ -3,6 +3,19 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineNuxtConfig({
   modules: ['@nuxt/eslint'],
   css: ['~/src/style.css'],
+  components: [
+    { path: '~/components', pattern: '**/*.vue' },
+  ],
+  app: {
+    head: {
+      link: [
+        {
+          rel: 'stylesheet',
+          href: 'https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap',
+        },
+      ],
+    },
+  },
   vite: {
     plugins: [tailwindcss()],
   },
