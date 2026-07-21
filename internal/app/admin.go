@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"net/mail"
 	"net/url"
 	"sort"
 	"strings"
+
+	xinghaimigrate "github.com/xinghai-osc/xinghai-router/internal/migrate"
 )
 
 func (s *Service) fetchChannelModels(w http.ResponseWriter, r *http.Request) {
@@ -1266,4 +1269,33 @@ func (s *Service) listLogs(w http.ResponseWriter, r *http.Request) {
 		data = append(data, map[string]any{"request_id": requestID, "user_id": uid, "api_key_id": kid, "channel_id": cid, "model": model, "status_code": status, "prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": total, "duration_ms": duration, "error_code": errorCode, "created_at": created})
 	}
 	writeJSON(w, 200, map[string]any{"data": data})
+}
+
+func (s *Service) runMigration(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		SourceDSN    string `json:"source_dsn"`
+		SourceDriver string `json:"source_driver"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeError(w, 400, "invalid_request", "invalid JSON body")
+		return
+	}
+	if in.SourceDSN == "" {
+		writeError(w, 400, "invalid_request", "source_dsn is required")
+		return
+	}
+	if in.SourceDriver == "" {
+		in.SourceDriver = "mysql"
+	}
+
+	log.Printf("Migration requested: driver=%s source=%s target=%s", in.SourceDriver, in.SourceDSN, s.cfg.DatabaseURL)
+
+	if err := xinghaimigrate.Run(in.SourceDSN, in.SourceDriver, s.cfg.DatabaseURL); err != nil {
+		log.Printf("Migration failed: %v", err)
+		writeError(w, 500, "migration_failed", err.Error())
+		return
+	}
+
+	s.audit(r, "system.migrate", "system", "", map[string]any{"source_driver": in.SourceDriver})
+	writeJSON(w, 200, map[string]any{"message": "迁移完成"})
 }

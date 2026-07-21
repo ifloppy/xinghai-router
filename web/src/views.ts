@@ -5,6 +5,7 @@ export type View =
   | 'usage-overview' | 'ledger' | 'pricing'
   | 'site-settings' | 'payment-settings' | 'audit' | 'reliability'
   | 'subscriptions' | 'subscription-plans' | 'admin-subscriptions'
+  | 'migrate'
 
 export const VIEWS: View[] = [
   'overview', 'users', 'groups', 'keys', 'channels', 'providers',
@@ -12,4 +13,5 @@ export const VIEWS: View[] = [
   'usage-overview', 'ledger', 'pricing',
   'site-settings', 'payment-settings', 'audit', 'reliability',
   'subscriptions', 'subscription-plans', 'admin-subscriptions',
+  'migrate',
 ]

@@ -1,6 +1,6 @@
 .env
 bin/
-router
+/router
 /migrate
 web/node_modules/
 web/dist/

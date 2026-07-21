@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, onMounted, provide, reactive, ref, watch } from 'vue'
-import { Activity, KeyRound, Layers3, LayoutDashboard, RadioTower, ShieldCheck, TerminalSquare, UserRound, Users, WalletCards, ReceiptText, Tags, Settings, Crown } from 'lucide-vue-next'
+import { Activity, Database, KeyRound, Layers3, LayoutDashboard, RadioTower, ShieldCheck, TerminalSquare, UserRound, Users, WalletCards, ReceiptText, Tags, Settings, Crown } from 'lucide-vue-next'
 import { endpoints, clearToken, getToken } from '~/src/api'
+import type { MigrateForm } from '~/src/api'
 import ModelSquare from '~/components/marketplace/ModelSquare.vue'
 import type { Account, ActivityLog, AdminSiteSettings, AdminSubscription, ApiKey, CatalogGroup, CatalogModel, Channel, Group, LedgerEntry, ModelProvider, PaymentMethod, PaymentOrder, PaymentSettings, Pricing, PublicSubscriptionPlan, ReliabilitySettings, SiteSettings, SubscriptionOrder, SubscriptionPlan, UsageRecord, User, UserSubscription } from '~/src/api'
 import type { View } from '~/src/views'
@@ -84,7 +85,7 @@ const personalNav = computed(() => [['profile', t('profile'), UserRound]] as con
 const managementNavItems = [
   ['users', 'users', Users, 'users.read'], ['groups', 'groups', Layers3, 'system.manage'], ['keys', 'keys', KeyRound, 'keys.manage'], ['channels', 'channels', RadioTower, 'channels.read'], ['providers', 'providers', Tags, 'system.manage'],
 ] as const
-const adminExtraNav = [['pricing', 'pricing', Tags, 'pricing.read'], ['reliability', 'reliability', ShieldCheck, 'system.manage'], ['subscription-plans', 'subscriptionPlans', Crown, 'system.manage'], ['admin-subscriptions', 'adminSubscriptions', Crown, 'users.read'], ['site-settings', 'siteSettings', Settings, 'system.manage'], ['payment-settings', 'paymentSettings', WalletCards, 'system.manage']] as const
+const adminExtraNav = [['pricing', 'pricing', Tags, 'pricing.read'], ['reliability', 'reliability', ShieldCheck, 'system.manage'], ['subscription-plans', 'subscriptionPlans', Crown, 'system.manage'], ['admin-subscriptions', 'adminSubscriptions', Crown, 'users.read'], ['migrate', 'migrate', Database, 'system.manage'], ['site-settings', 'siteSettings', Settings, 'system.manage'], ['payment-settings', 'paymentSettings', WalletCards, 'system.manage']] as const
 const localizedManagementNavItems = computed(() => managementNavItems.map(([id, key, icon, permission]) => [id, t(key as Parameters<typeof t>[0]), icon, permission] as const))
 const localizedAdminExtraNav = computed(() => adminExtraNav.map(([id, key, icon, permission]) => [id, t(key as Parameters<typeof t>[0]), icon, permission] as const))
 const permissions = ['users.read', 'users.manage', 'keys.manage', 'channels.read', 'channels.manage', 'logs.read', 'pricing.read', 'pricing.manage', 'audit.read', 'wallets.manage', 'routes.manage', 'quotas.manage', 'system.manage']
@@ -103,6 +104,9 @@ const subscriptionMessage = ref('')
 const siteSettingsForm = reactive<AdminSiteSettings & { geetest_captcha_key: string; smtp_password: string }>({ name: '', icon_url: '', auto_disable_failed_channels: false, geetest_captcha_id: '', has_geetest_captcha_key: false, geetest_captcha_key: '', smtp_host: '', smtp_port: '465', smtp_username: '', has_smtp_password: false, smtp_password: '', smtp_from: '' })
 const reliabilityForm = reactive<ReliabilitySettings>({ retry_count: 3, retry_status_codes: '', health_check_mode: 'off', health_check_interval_minutes: 5, health_check_auto_recover: true, health_check_channel_ids: '', auto_disable_on_test_failure: false, auto_disable_slow_seconds: 0, auto_disable_status_codes: '', auto_disable_keywords: '' })
 const newAPIPricingForm = reactive({ base_url: '', api_key: '', price_per_quota_unit: 1 })
+const migrateForm = reactive<MigrateForm>({ source_dsn: '', source_driver: 'mysql' })
+const migrateResult = ref('')
+const migrateRunning = ref(false)
 const leaderboardPrefs = reactive({ opt_in: true, mask_name: true })
 async function saveLeaderboardPrefs() { await action(async () => { await endpoints.updateAccountPreferences(leaderboardPrefs.opt_in, leaderboardPrefs.mask_name); if (account.value) { account.value.leaderboard_opt_in = leaderboardPrefs.opt_in; account.value.leaderboard_mask_name = leaderboardPrefs.mask_name } }) }
 const avatarInput = ref<HTMLInputElement | null>(null)
@@ -244,6 +248,7 @@ const VIEW_LOADERS: Partial<Record<View, (() => Promise<void>)[]>> = {
   'payment-settings': [loadPaymentSettings],
   'subscription-plans': [loadSubscriptionPlans, loadUsersAndGroups],
   'admin-subscriptions': [loadAdminSubscriptions],
+  migrate: [],
 }
 
 const loadedViews = ref<Set<View>>(new Set())
@@ -323,6 +328,14 @@ async function confirmSubscribe() {
   })
 }
 async function cancelSubscription(sub: UserSubscription) { if (!confirm(t('cancelSubscriptionConfirm'))) return; await action(async () => { await endpoints.cancelAccountSubscription(sub.id); await load() }) }
+async function runMigration() {
+  migrateRunning.value = true; migrateResult.value = ''; error.value = ''
+  try {
+    const result = await endpoints.runMigration(migrateForm)
+    migrateResult.value = result.message
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : t('operationFailed') }
+  finally { migrateRunning.value = false }
+}
 async function savePlan() {
   await action(async () => {
     const payload = { name: subscriptionPlanForm.name, description: subscriptionPlanForm.description, price: subscriptionPlanForm.price, currency: subscriptionPlanForm.currency, billing_period: subscriptionPlanForm.billing_period, credit_amount: subscriptionPlanForm.credit_amount, group_id: subscriptionPlanForm.group_id, model_whitelist: subscriptionPlanForm.model_whitelist.split(',').map((v) => v.trim()).filter(Boolean), max_requests_per_period: subscriptionPlanForm.max_requests_per_period === '' ? null : Number(subscriptionPlanForm.max_requests_per_period), max_tokens_per_period: subscriptionPlanForm.max_tokens_per_period === '' ? null : Number(subscriptionPlanForm.max_tokens_per_period), sort_order: subscriptionPlanForm.sort_order, enabled: subscriptionPlanForm.enabled }
@@ -427,6 +440,7 @@ const viewComponents: Partial<Record<View, ReturnType<typeof defineAsyncComponen
   subscriptions: defineAsyncComponent(() => import('~/components/console/Subscriptions.vue')),
   'subscription-plans': defineAsyncComponent(() => import('~/components/console/SubscriptionPlans.vue')),
   'admin-subscriptions': defineAsyncComponent(() => import('~/components/console/AdminSubscriptions.vue')),
+  migrate: defineAsyncComponent(() => import('~/components/console/Migrate.vue')),
 }
 const currentViewComponent = computed(() => viewComponents[view.value])
 
@@ -462,6 +476,7 @@ provide(CONSOLE_STORE_KEY, {
   saveLeaderboardPrefs, saveSiteSettings, saveReliabilitySettings,
   loadPublicPlans, openSubscribeModal, confirmSubscribe, cancelSubscription,
   savePlan, openPlanModal, editPlan, deletePlan,
+  migrateForm, migrateResult, migrateRunning, runMigration,
   personalRequests, personalTokens, personalCost, setupProgress,
   filteredCatalog, apiEndpoint, usageChart, usageLinePoints,
   userName, formatDate, short, formatPrice, providerIcon, modelProvider,

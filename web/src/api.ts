@@ -162,6 +162,8 @@ export interface PricingForm { model: string; input_per_million: number; cached_
 export interface NewApiPricingForm { base_url: string; api_key: string; price_per_quota_unit: number }
 export interface SubscriptionPlanForm { name: string; description: string; price: string; currency: string; billing_period: string; credit_amount: string; group_id: string; model_whitelist: string[]; max_requests_per_period: number | null; max_tokens_per_period: number | null; sort_order: number; enabled: boolean }
 export interface UserUpdate { name?: string; email?: string; role?: string; enabled?: boolean; password?: string; balance?: number | null; note?: string; permissions?: string[]; groups?: string[] }
+export interface MigrateForm { source_dsn: string; source_driver: string }
+export interface MigrateResult { message: string }
 
 export const endpoints = {
   getSiteSettings: () => get<SiteSettings>('/site-settings'),
@@ -227,4 +229,5 @@ export const endpoints = {
   updateSubscriptionPlan: (id: string, form: SubscriptionPlanForm) => send(`/admin/subscription-plans/${encodeURIComponent(id)}`, 'PUT', form),
   deleteSubscriptionPlan: (id: string) => send(`/admin/subscription-plans/${encodeURIComponent(id)}`, 'DELETE'),
   getAdminSubscriptions: () => get<{ data: AdminSubscription[] }>('/admin/subscriptions'),
+  runMigration: (form: MigrateForm) => post<MigrateResult>('/admin/migrate', form),
 }
