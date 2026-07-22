@@ -155,8 +155,8 @@ func validatePasswordChange(currentPassword, newPassword string) string {
 	if currentPassword == "" || newPassword == "" {
 		return "current_password and new_password are required"
 	}
-	if len(newPassword) < 8 || len(newPassword) > 128 {
-		return "new password must be between 8 and 128 characters"
+	if !validPasswordLength(newPassword) {
+		return "new password must be between 8 and 72 characters"
 	}
 	if currentPassword == newPassword {
 		return "new password must differ from the current password"
@@ -482,9 +482,13 @@ func (s *Service) createSession(w http.ResponseWriter, r *http.Request, userID s
 	writeJSON(w, status, map[string]any{"token": token, "expires_at": expiresAt})
 }
 
+func validPasswordLength(password string) bool {
+	return len(password) >= 8 && len(password) <= 72
+}
+
 func validAccountInput(email, name, password string) bool {
 	parsed, err := mail.ParseAddress(strings.TrimSpace(email))
-	return err == nil && parsed.Address == strings.TrimSpace(email) && len(strings.TrimSpace(name)) > 0 && len(strings.TrimSpace(name)) <= 100 && len(password) >= 8 && len(password) <= 128
+	return err == nil && parsed.Address == strings.TrimSpace(email) && len(strings.TrimSpace(name)) > 0 && len(strings.TrimSpace(name)) <= 100 && validPasswordLength(password)
 }
 
 func validEmail(email string) bool {
