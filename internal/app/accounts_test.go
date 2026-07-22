@@ -67,3 +67,5 @@ func TestChangeAccountPasswordRejectsInvalidBodyBeforeDatabaseAccess(t *testing.
 		}
 	}
 }
+
+
