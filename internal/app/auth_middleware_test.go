@@ -35,7 +35,7 @@ func TestAccountMiddlewareRequiresSessionToken(t *testing.T) {
 
 func TestAPIMiddlewareRequiresAPIKey(t *testing.T) {
 	called := false
-	handler := (&Service{limiter: newMemoryLimiter(10)}).api(func(w http.ResponseWriter, r *http.Request) {
+	handler := (&Service{limiter: newLimiter(10)}).api(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
 	})
