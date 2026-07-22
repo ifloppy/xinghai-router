@@ -40,6 +40,13 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := setTrustedProxies(cfg.TrustedProxies); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("trusted proxies: %w", err)
+	}
+	if cfg.TrustedProxies != "" {
+		log.Printf("trusted proxies enabled: %s", cfg.TrustedProxies)
+	}
 	limiter, mode := newRateLimiter(cfg.RedisURL, cfg.RateLimitPerMinute)
 	if mode == "redis" {
 		log.Printf("rate limiter backend: redis (memory fallback on redis errors)")
