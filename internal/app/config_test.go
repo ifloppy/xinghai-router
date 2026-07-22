@@ -77,3 +77,20 @@ func TestLoadConfigDefaultsAndFlags(t *testing.T) {
 		t.Fatal("expected email verification enabled")
 	}
 }
+
+func TestLoadConfigRejectsInvalidTrustedProxies(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://router:pass@localhost:5432/router")
+	t.Setenv("ENCRYPTION_KEY", "unit-test-encryption-key-not-for-prod")
+	t.Setenv("TRUSTED_PROXIES", "not-a-valid-proxy-spec")
+	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "TRUSTED_PROXIES") {
+		t.Fatalf("expected TRUSTED_PROXIES error, got %v", err)
+	}
+	t.Setenv("TRUSTED_PROXIES", "loopback,10.0.0.0/8")
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TrustedProxies != "loopback,10.0.0.0/8" {
+		t.Fatalf("TrustedProxies = %q", cfg.TrustedProxies)
+	}
+}

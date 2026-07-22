@@ -114,6 +114,22 @@ func TestNullableGroupRef(t *testing.T) {
 	}
 }
 
+func TestBatchExtendSubscriptionsRejectsInvalidDaysBeforeDatabase(t *testing.T) {
+	for _, body := range []string{
+		`not-json`,
+		`{"plan_id":"p1","days":0}`,
+		`{"plan_id":"p1","days":-1}`,
+		`{"plan_id":"p1","days":3651}`,
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/admin/subscriptions/extend", strings.NewReader(body))
+		(&Service{}).batchExtendSubscriptions(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d, want %d", body, rec.Code, http.StatusBadRequest)
+		}
+	}
+}
+
 func TestProviderForModel(t *testing.T) {
 	providers := []modelProvider{
 		{Name: "OpenAI", Slug: "openai", Prefixes: []string{"gpt-", "o1"}, Priority: 10},
