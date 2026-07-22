@@ -283,8 +283,9 @@ Use this before exposing the stack on a public host.
 
 ### Rate limiting and scale
 
-1. Compose injects `REDIS_URL=redis://redis:6379/0`. Use it so API-key rate limits are shared across router replicas. Without Redis the limiter is process-local.
+1. Compose requires `REDIS_PASSWORD` and injects `REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0` so API-key and auth rate limits are shared across router replicas. Without Redis the limiter is process-local.
 2. Horizontal scaling: run multiple router replicas behind the proxy only when Redis-backed limiting is enabled; wallet reservation already lives in PostgreSQL.
+3. Auth endpoints (`/auth/login`, `/auth/register`, `/auth/email-code`) are rate-limited by IP and email via the same limiter keys.
 
 ### Operations
 
