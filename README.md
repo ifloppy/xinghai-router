@@ -277,7 +277,7 @@ Use this before exposing the stack on a public host.
 
 ### Network and TLS
 
-1. Terminate TLS at a reverse proxy (Nginx, Caddy, cloud LB). Forward `X-Forwarded-Proto: https` so the router can emit HSTS on API responses.
+1. Terminate TLS at a reverse proxy (Nginx, Caddy, cloud LB). Forward `X-Forwarded-Proto: https` so the router can emit HSTS on API responses. Set `TRUSTED_PROXIES` to the proxy CIDRs (or `loopback,private`) so auth rate limits and audit logs use the real client IP from `X-Forwarded-For` / `X-Real-IP`; leave it empty to ignore spoofable proxy headers.
 2. Expose only the web console and/or the gateway ports you need. Keep PostgreSQL and Redis off the public network (compose already binds them internally).
 3. Channel `base_url` values must be HTTPS (HTTP only for loopback). Payment `base_url` / `public_base_url` must be HTTPS in production.
 
