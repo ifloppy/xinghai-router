@@ -164,6 +164,16 @@ export interface SubscriptionPlanForm { name: string; description: string; price
 export interface UserUpdate { name?: string; email?: string; role?: string; enabled?: boolean; password?: string; balance?: number | null; note?: string; permissions?: string[]; groups?: string[] }
 export interface MigrateForm { source_dsn: string; source_driver: string }
 export interface MigrateResult { message: string }
+export interface MigrationStatus {
+  status: 'idle' | 'running' | 'completed' | 'failed'
+  step: string
+  current: number
+  total: number
+  detail?: string
+  error?: string
+  started_at: string
+  finished_at?: string
+}
 
 export const endpoints = {
   getSiteSettings: () => get<SiteSettings>('/site-settings'),
@@ -229,5 +239,7 @@ export const endpoints = {
   updateSubscriptionPlan: (id: string, form: SubscriptionPlanForm) => send(`/admin/subscription-plans/${encodeURIComponent(id)}`, 'PUT', form),
   deleteSubscriptionPlan: (id: string) => send(`/admin/subscription-plans/${encodeURIComponent(id)}`, 'DELETE'),
   getAdminSubscriptions: () => get<{ data: AdminSubscription[] }>('/admin/subscriptions'),
+  batchExtendSubscriptions: (planId: string, days: number) => post<{ affected: number }>('/admin/subscriptions/extend', { plan_id: planId, days }),
   runMigration: (form: MigrateForm) => post<MigrateResult>('/admin/migrate', form),
+  getMigrationStatus: () => get<MigrationStatus>('/admin/migrate'),
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type subscriptionPlan struct {
@@ -459,6 +460,46 @@ func (s *Service) adminListSubscriptions(w http.ResponseWriter, r *http.Request)
 		data = append(data, map[string]any{"id": id, "user_id": userID, "email": email, "user_name": name, "plan_id": planID, "plan_name": planName, "status": status, "current_period_start": start, "current_period_end": end, "auto_renew": autoRenew, "cancelled_at": cancelled, "created_at": created, "updated_at": updated})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+}
+
+// ---- Admin: batch extend subscriptions ----
+
+func (s *Service) batchExtendSubscriptions(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		PlanID string `json:"plan_id"`
+		Days   int    `json:"days"`
+	}
+	if decode(r, &in) != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "invalid payload")
+		return
+	}
+	if in.Days <= 0 || in.Days > 3650 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "days must be between 1 and 3650")
+		return
+	}
+	planID := strings.TrimSpace(in.PlanID)
+	if planID != "" {
+		var planExists bool
+		if err := s.db.QueryRow(r.Context(), `select exists(select 1 from subscription_plans where id=$1)`, planID).Scan(&planExists); err != nil || !planExists {
+			writeError(w, http.StatusNotFound, "not_found", "plan not found")
+			return
+		}
+	}
+	const ext = `update user_subscriptions set current_period_end = case when current_period_end is null or current_period_end <= now() then now() + ($1 || ' days')::interval else current_period_end + ($1 || ' days')::interval end, updated_at = now() where status='active'`
+	var result pgconn.CommandTag
+	var err error
+	if planID != "" {
+		result, err = s.db.Exec(r.Context(), ext+` and plan_id=$2`, in.Days, planID)
+	} else {
+		result, err = s.db.Exec(r.Context(), ext, in.Days)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "could not extend subscriptions")
+		return
+	}
+	affected := result.RowsAffected()
+	s.audit(r, "subscription.batch_extended", "subscription_plan", planID, map[string]any{"days": in.Days, "affected": affected})
+	writeJSON(w, http.StatusOK, map[string]any{"affected": affected})
 }
 
 func (s *Service) accountSubscriptionOrder(w http.ResponseWriter, r *http.Request) {

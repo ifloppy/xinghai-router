@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, h, onMounted, provide, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, onMounted, onUnmounted, provide, reactive, ref, watch } from 'vue'
 import { Activity, Database, KeyRound, Layers3, LayoutDashboard, RadioTower, ShieldCheck, TerminalSquare, UserRound, Users, WalletCards, ReceiptText, Tags, Settings, Crown } from 'lucide-vue-next'
 import { endpoints, clearToken, getToken } from '~/src/api'
-import type { MigrateForm } from '~/src/api'
+import type { MigrateForm, MigrationStatus, Account, ActivityLog, AdminSiteSettings, AdminSubscription, ApiKey, CatalogGroup, CatalogModel, Channel, Group, LedgerEntry, ModelProvider, PaymentMethod, PaymentOrder, PaymentSettings, Pricing, PublicSubscriptionPlan, ReliabilitySettings, SiteSettings, SubscriptionOrder, SubscriptionPlan, UsageRecord, User, UserSubscription } from '~/src/api'
 import ModelSquare from '~/components/marketplace/ModelSquare.vue'
-import type { Account, ActivityLog, AdminSiteSettings, AdminSubscription, ApiKey, CatalogGroup, CatalogModel, Channel, Group, LedgerEntry, ModelProvider, PaymentMethod, PaymentOrder, PaymentSettings, Pricing, PublicSubscriptionPlan, ReliabilitySettings, SiteSettings, SubscriptionOrder, SubscriptionPlan, UsageRecord, User, UserSubscription } from '~/src/api'
 import type { View } from '~/src/views'
 import { VIEWS } from '~/src/views'
 import { CONSOLE_STORE_KEY } from '~/composables/useConsoleStore'
@@ -101,12 +100,14 @@ const showPlanModal = ref(false)
 const subscribingPlan = ref<PublicSubscriptionPlan | null>(null)
 const subscribeForm = reactive({ payment_type: '', auto_renew: false })
 const subscriptionMessage = ref('')
+const extendForm = reactive({ plan_id: '', days: 30 })
 const siteSettingsForm = reactive<AdminSiteSettings & { geetest_captcha_key: string; smtp_password: string }>({ name: '', icon_url: '', auto_disable_failed_channels: false, geetest_captcha_id: '', has_geetest_captcha_key: false, geetest_captcha_key: '', smtp_host: '', smtp_port: '465', smtp_username: '', has_smtp_password: false, smtp_password: '', smtp_from: '' })
 const reliabilityForm = reactive<ReliabilitySettings>({ retry_count: 3, retry_status_codes: '', health_check_mode: 'off', health_check_interval_minutes: 5, health_check_auto_recover: true, health_check_channel_ids: '', auto_disable_on_test_failure: false, auto_disable_slow_seconds: 0, auto_disable_status_codes: '', auto_disable_keywords: '' })
 const newAPIPricingForm = reactive({ base_url: '', api_key: '', price_per_quota_unit: 1 })
 const migrateForm = reactive<MigrateForm>({ source_dsn: '', source_driver: 'mysql' })
-const migrateResult = ref('')
-const migrateRunning = ref(false)
+const migrateStatus = ref<MigrationStatus | null>(null)
+const migratePolling = ref(false)
+let migratePollTimer: ReturnType<typeof setInterval> | null = null
 const leaderboardPrefs = reactive({ opt_in: true, mask_name: true })
 async function saveLeaderboardPrefs() { await action(async () => { await endpoints.updateAccountPreferences(leaderboardPrefs.opt_in, leaderboardPrefs.mask_name); if (account.value) { account.value.leaderboard_opt_in = leaderboardPrefs.opt_in; account.value.leaderboard_mask_name = leaderboardPrefs.mask_name } }) }
 const avatarInput = ref<HTMLInputElement | null>(null)
@@ -328,13 +329,33 @@ async function confirmSubscribe() {
   })
 }
 async function cancelSubscription(sub: UserSubscription) { if (!confirm(t('cancelSubscriptionConfirm'))) return; await action(async () => { await endpoints.cancelAccountSubscription(sub.id); await load() }) }
-async function runMigration() {
-  migrateRunning.value = true; migrateResult.value = ''; error.value = ''
+async function pollMigrationStatus() {
+  if (migratePolling.value) return
+  migratePolling.value = true
   try {
-    const result = await endpoints.runMigration(migrateForm)
-    migrateResult.value = result.message
+    const status = await endpoints.getMigrationStatus()
+    migrateStatus.value = status
+    if (status.status === 'running') {
+      migratePollTimer = setInterval(async () => {
+        try {
+          const s = await endpoints.getMigrationStatus()
+          migrateStatus.value = s
+          if (s.status !== 'running') stopMigrationPolling()
+        } catch { stopMigrationPolling() }
+      }, 2000)
+    }
   } catch (cause) { error.value = cause instanceof Error ? cause.message : t('operationFailed') }
-  finally { migrateRunning.value = false }
+  finally { migratePolling.value = false }
+}
+function stopMigrationPolling() {
+  if (migratePollTimer) { clearInterval(migratePollTimer); migratePollTimer = null }
+}
+async function runMigration() {
+  error.value = ''
+  try {
+    await endpoints.runMigration(migrateForm)
+    await pollMigrationStatus()
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : t('operationFailed') }
 }
 async function savePlan() {
   await action(async () => {
@@ -349,6 +370,14 @@ async function savePlan() {
 function openPlanModal() { editingPlanID.value = ''; Object.assign(subscriptionPlanForm, { name: '', description: '', price: '0', currency: 'CNY', billing_period: 'month', credit_amount: '0', group_id: '', model_whitelist: '', max_requests_per_period: '', max_tokens_per_period: '', sort_order: 0, enabled: true }); showPlanModal.value = true }
 function editPlan(plan: SubscriptionPlan) { editingPlanID.value = plan.id; Object.assign(subscriptionPlanForm, { name: plan.name, description: plan.description, price: plan.price, currency: plan.currency, billing_period: plan.billing_period, credit_amount: plan.credit_amount, group_id: plan.group_id, model_whitelist: plan.model_whitelist.join(', '), max_requests_per_period: plan.max_requests_per_period ?? '', max_tokens_per_period: plan.max_tokens_per_period ?? '', sort_order: plan.sort_order, enabled: plan.enabled }); showPlanModal.value = true }
 async function deletePlan(plan: SubscriptionPlan) { if (!confirm(t('deletePlanConfirm').replace('{name}', plan.name))) return; await action(async () => { await endpoints.deleteSubscriptionPlan(plan.id); await load() }) }
+async function extendSubscriptions() {
+  if (!extendForm.plan_id || !extendForm.days) return
+  await action(async () => {
+    const result = await endpoints.batchExtendSubscriptions(extendForm.plan_id, extendForm.days)
+    await loadAdminSubscriptions()
+    error.value = t('extendSuccess').replace('{count}', String(result.affected)).replace('{days}', String(extendForm.days))
+  })
+}
 function manageUser(user: User) { originalUser.value = user; selectedUser.value = { ...user }; selectedPermissions.value = [...user.permissions]; selectedGroups.value = [...(user.groups ?? [])]; userPassword.value = ''; userBalance.value = Number(user.balance ?? 0); userBalanceNote.value = '' }
 async function saveUserAccess() {
   if (!selectedUser.value || !originalUser.value) return
@@ -419,6 +448,8 @@ onMounted(async () => {
   }
 })
 
+onUnmounted(() => stopMigrationPolling())
+
 // --- View components (lazy-loaded) -----------------------------------------
 const viewComponents: Partial<Record<View, ReturnType<typeof defineAsyncComponent>>> = {
   overview: defineAsyncComponent(() => import('~/components/console/Overview.vue')),
@@ -458,7 +489,7 @@ provide(CONSOLE_STORE_KEY, {
   catalog, catalogGroups, catalogLoaded, catalogGroup, catalogSearch,
   activityModels, activityFilters, leaderboardPrefs,
   subscriptionPlans, publicPlans, userSubscriptions, subscriptionOrders, adminSubscriptions,
-  subscriptionPlanForm, editingPlanID, showPlanModal, subscribingPlan, subscribeForm, subscriptionMessage,
+  subscriptionPlanForm, editingPlanID, showPlanModal, subscribingPlan, subscribeForm, subscriptionMessage, extendForm,
   createdKey, showKey, showAccountKey, editingAccountKey, showChannel, editingChannel, showProvider,
   selectedUser, originalUser, selectedPermissions, selectedGroups,
   userPassword, userBalance, userBalanceNote,
@@ -475,8 +506,8 @@ provide(CONSOLE_STORE_KEY, {
   manageUser, saveUserAccess, chooseAvatar, removeAvatar, saveAvatarUrl,
   saveLeaderboardPrefs, saveSiteSettings, saveReliabilitySettings,
   loadPublicPlans, openSubscribeModal, confirmSubscribe, cancelSubscription,
-  savePlan, openPlanModal, editPlan, deletePlan,
-  migrateForm, migrateResult, migrateRunning, runMigration,
+  savePlan, openPlanModal, editPlan, deletePlan, extendSubscriptions,
+  migrateForm, migrateStatus, migratePolling, runMigration, pollMigrationStatus, stopMigrationPolling,
   personalRequests, personalTokens, personalCost, setupProgress,
   filteredCatalog, apiEndpoint, usageChart, usageLinePoints,
   userName, formatDate, short, formatPrice, providerIcon, modelProvider,

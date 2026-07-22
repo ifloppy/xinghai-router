@@ -1,5 +1,5 @@
 import type { Component, InjectionKey, Ref, ComputedRef } from 'vue'
-import type { Account, ActivityLog, AdminSiteSettings, AdminSubscription, ApiKey, CatalogGroup, CatalogModel, Channel, Group, LedgerEntry, ModelProvider, PaymentMethod, PaymentOrder, PaymentSettings, Pricing, PublicSubscriptionPlan, ReliabilitySettings, SiteSettings, SubscriptionOrder, SubscriptionPlan, UsageRecord, User, UserSubscription } from '~/src/api'
+import type { Account, ActivityLog, AdminSiteSettings, AdminSubscription, ApiKey, CatalogGroup, CatalogModel, Channel, Group, LedgerEntry, MigrationStatus, ModelProvider, PaymentMethod, PaymentOrder, PaymentSettings, Pricing, PublicSubscriptionPlan, ReliabilitySettings, SiteSettings, SubscriptionOrder, SubscriptionPlan, UsageRecord, User, UserSubscription } from '~/src/api'
 import type { useI18n } from '~/composables/useI18n'
 import type { View } from '~/src/views'
 
@@ -90,6 +90,7 @@ export interface ConsoleStore {
   subscribingPlan: Ref<PublicSubscriptionPlan | null>
   subscribeForm: { payment_type: string; auto_renew: boolean }
   subscriptionMessage: Ref<string>
+  extendForm: { plan_id: string; days: number }
 
   // Modal state
   createdKey: Ref<string>
@@ -115,6 +116,11 @@ export interface ConsoleStore {
   groupImportText: Ref<string>
   avatarUrlInput: Ref<string>
   avatarInput: Ref<HTMLInputElement | null>
+
+  // Migration
+  migrateForm: { source_dsn: string; source_driver: string }
+  migrateStatus: Ref<MigrationStatus | null>
+  migratePolling: Ref<boolean>
 
   // Actions
   load: () => Promise<void>
@@ -163,6 +169,12 @@ export interface ConsoleStore {
   openPlanModal: () => void
   editPlan: (plan: SubscriptionPlan) => void
   deletePlan: (plan: SubscriptionPlan) => Promise<void>
+  extendSubscriptions: () => Promise<void>
+
+  // Migration actions
+  runMigration: () => Promise<void>
+  pollMigrationStatus: () => Promise<void>
+  stopMigrationPolling: () => void
 
   // Computed helpers
   personalRequests: ComputedRef<number>
