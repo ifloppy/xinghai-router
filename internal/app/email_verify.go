@@ -128,8 +128,14 @@ func (s *Service) sendEmailCode(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	var exists bool
-	if err := s.db.QueryRow(ctx, `select exists(select 1 from users where email=$1)`, email).Scan(&exists); err == nil && exists {
-		writeError(w, http.StatusConflict, "email_registered", "this email is already registered")
+	if err := s.db.QueryRow(ctx, `select exists(select 1 from users where email=$1)`, email).Scan(&exists); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "could not check email")
+		return
+	}
+	// Always return the same success shape so callers cannot probe whether an
+	// address is already registered. Skip send/store for existing accounts.
+	if exists {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
 		return
 	}
 	var lastSent time.Time
@@ -176,7 +182,7 @@ func (s *Service) verifyEmailCode(ctx context.Context, email, code string) error
 	if attempts >= emailCodeMaxAttempts {
 		return fmt.Errorf("too many incorrect attempts, request a new code")
 	}
-	if hashEmailCode(email, code) != codeHash {
+	if !equalSecret(hashEmailCode(email, code), codeHash) {
 		_, _ = s.db.Exec(ctx, `update email_verification_codes set attempts=attempts+1 where id=$1`, id)
 		return fmt.Errorf("the verification code is invalid or expired")
 	}
