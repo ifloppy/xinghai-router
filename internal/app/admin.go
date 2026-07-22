@@ -413,7 +413,12 @@ func (s *Service) updateUser(w http.ResponseWriter, r *http.Request) {
 				writeError(w, 500, "internal_error", "could not revoke sessions after disable")
 				return
 			}
+			if _, err = tx.Exec(r.Context(), `update api_keys set revoked_at=coalesce(revoked_at, now()) where user_id=$1 and revoked_at is null`, userID); err != nil {
+				writeError(w, 500, "internal_error", "could not revoke API keys after disable")
+				return
+			}
 			changed["sessions_revoked"] = true
+			changed["api_keys_revoked"] = true
 		}
 		changed["enabled"] = *in.Enabled
 	}
