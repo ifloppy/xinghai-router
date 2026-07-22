@@ -6,7 +6,11 @@ import (
 	"time"
 )
 
-const authCleanupInterval = time.Hour
+const (
+	authCleanupInterval   = time.Hour
+	pendingOrderMaxAge    = 24 * time.Hour
+	pendingOrderAgeSQL    = "24 hours"
+)
 
 func (s *Service) startAuthCleanupScheduler(ctx context.Context) {
 	go func() {
@@ -19,6 +23,7 @@ func (s *Service) startAuthCleanupScheduler(ctx context.Context) {
 				return
 			case <-timer.C:
 				s.cleanupExpiredAuthState(ctx)
+				s.expireStalePendingOrders(ctx)
 				timer.Reset(authCleanupInterval)
 			}
 		}
@@ -42,5 +47,25 @@ func (s *Service) cleanupExpiredAuthState(ctx context.Context) {
 	}
 	if sessionN > 0 || codeN > 0 {
 		log.Printf("auth cleanup: removed %d expired sessions and %d email verification codes", sessionN, codeN)
+	}
+}
+
+func (s *Service) expireStalePendingOrders(ctx context.Context) {
+	if s.db == nil {
+		return
+	}
+	payN, subN := int64(0), int64(0)
+	if tag, err := s.db.Exec(ctx, `update payment_orders set status='expired', updated_at=now() where status='pending' and created_at < now() - $1::interval`, pendingOrderAgeSQL); err != nil {
+		log.Printf("order cleanup: expire payment orders: %v", err)
+	} else {
+		payN = tag.RowsAffected()
+	}
+	if tag, err := s.db.Exec(ctx, `update subscription_orders set status='expired', updated_at=now() where status='pending' and created_at < now() - $1::interval`, pendingOrderAgeSQL); err != nil {
+		log.Printf("order cleanup: expire subscription orders: %v", err)
+	} else {
+		subN = tag.RowsAffected()
+	}
+	if payN > 0 || subN > 0 {
+		log.Printf("order cleanup: expired %d payment orders and %d subscription orders older than %s", payN, subN, pendingOrderMaxAge)
 	}
 }
