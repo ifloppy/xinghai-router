@@ -78,7 +78,14 @@ func (s *Service) expireStalePendingOrders(ctx context.Context) {
 	} else {
 		subN = tag.RowsAffected()
 	}
-	if payN > 0 || subOrderN > 0 || subN > 0 {
-		log.Printf("order cleanup: expired %d payment orders, %d subscription orders, cancelled %d pending subscriptions older than %s", payN, subOrderN, subN, pendingOrderMaxAge)
+	lapsedN := int64(0)
+	if tag, err := s.db.Exec(ctx, `update user_subscriptions set status='expired', updated_at=now()
+		where status='active' and current_period_end is not null and current_period_end < now()`); err != nil {
+		log.Printf("order cleanup: expire lapsed active subscriptions: %v", err)
+	} else {
+		lapsedN = tag.RowsAffected()
+	}
+	if payN > 0 || subOrderN > 0 || subN > 0 || lapsedN > 0 {
+		log.Printf("order cleanup: expired %d payment orders, %d subscription orders, cancelled %d pending subscriptions, marked %d lapsed actives older than %s", payN, subOrderN, subN, lapsedN, pendingOrderMaxAge)
 	}
 }
