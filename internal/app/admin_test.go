@@ -94,6 +94,8 @@ func TestCreateChannelRejectsInvalidRequestBeforeDatabaseAccess(t *testing.T) {
 		`{"name":"","api_key":"sk","base_url":"https://api.example.com","models":["model"]}`,
 		`{"name":"channel","api_key":"sk","base_url":"https://169.254.169.254","models":["model"]}`,
 		`{"name":"channel","api_key":"sk","base_url":"https://10.0.0.8","models":["model"]}`,
+		`{"name":"channel","api_key":"sk","base_url":"https://api.example.com","models":["model"],"priority":10001}`,
+		`{"name":"channel","api_key":"sk","base_url":"https://api.example.com","models":["model"],"priority":-10001}`,
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, "/admin/channels", strings.NewReader(body))
@@ -101,6 +103,38 @@ func TestCreateChannelRejectsInvalidRequestBeforeDatabaseAccess(t *testing.T) {
 		if recorder.Code != http.StatusBadRequest {
 			t.Fatalf("body %s status = %d, want %d", body, recorder.Code, http.StatusBadRequest)
 		}
+	}
+}
+
+func TestUpdateChannelRejectsInvalidPriorityBeforeDatabaseAccess(t *testing.T) {
+	for _, body := range []string{
+		`{"name":"channel","base_url":"https://api.example.com","models":["m"],"priority":10001}`,
+		`{"name":"channel","base_url":"https://api.example.com","models":["m"],"priority":-10001}`,
+		`{"name":"channel","base_url":"https://api.example.com","models":["m"],"provider":"unknown"}`,
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/admin/channels/channel-id", strings.NewReader(body))
+		(&Service{}).updateChannel(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d, want %d", body, rec.Code, http.StatusBadRequest)
+		}
+	}
+}
+
+func TestValidChannelProviderAndPriority(t *testing.T) {
+	for _, p := range []string{"openai", "ollama", "kimi", "opencode_go", "anthropic"} {
+		if !validChannelProvider(p) {
+			t.Fatalf("expected provider %q valid", p)
+		}
+	}
+	if validChannelProvider("azure") || validChannelProvider("") {
+		t.Fatal("unknown provider must be invalid")
+	}
+	if !validChannelPriority(0) || !validChannelPriority(-10000) || !validChannelPriority(10000) {
+		t.Fatal("boundary priorities must be valid")
+	}
+	if validChannelPriority(-10001) || validChannelPriority(10001) {
+		t.Fatal("out-of-range priority must be invalid")
 	}
 }
 
