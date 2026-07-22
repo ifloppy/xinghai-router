@@ -262,3 +262,13 @@ func TestRedactDSN(t *testing.T) {
 		t.Fatal("empty dsn should stay empty")
 	}
 }
+func TestSetUserRoleRejectsInvalidRoleBeforeDatabaseAccess(t *testing.T) {
+	for _, body := range []string{`{}`, `{"role":"owner"}`, `{"role":""}`} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/admin/users/1/role", strings.NewReader(body))
+		(&Service{}).setUserRole(recorder, request)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d, want %d", body, recorder.Code, http.StatusBadRequest)
+		}
+	}
+}
