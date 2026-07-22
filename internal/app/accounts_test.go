@@ -83,6 +83,17 @@ func TestLoginRateLimitBeforeDatabase(t *testing.T) {
 	}
 }
 
+func TestRegisterRateLimitBeforeDatabase(t *testing.T) {
+	s := &Service{limiter: &sequenceLimiter{remaining: 0}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(`{"email":"user@example.com","name":"User","password":"password1"}`))
+	req.RemoteAddr = "203.0.113.10:12345"
+	s.register(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
+	}
+}
+
 func TestDummyPasswordHashSpendsTime(t *testing.T) {
 	if dummyPasswordHash == "" {
 		t.Fatal("dummy password hash must be initialized")
