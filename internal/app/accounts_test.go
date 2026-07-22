@@ -72,6 +72,20 @@ func TestRegisterRateLimitBeforeDatabase(t *testing.T) {
 	}
 }
 
+func TestSendEmailCodeRateLimitBeforeDatabase(t *testing.T) {
+	s := &Service{limiter: &sequenceLimiter{remaining: 0}}
+	// Enable email verification via env-backed config fields so the handler does not 404.
+	s.cfg.SMTPHost = "smtp.example.com"
+	s.cfg.SMTPFrom = "noreply@example.com"
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/auth/email-code", strings.NewReader(`{"email":"user@example.com"}`))
+	req.RemoteAddr = "203.0.113.10:12345"
+	s.sendEmailCode(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
+	}
+}
+
 func TestDummyPasswordHashSpendsTime(t *testing.T) {
 	if dummyPasswordHash == "" {
 		t.Fatal("dummy password hash must be initialized")
