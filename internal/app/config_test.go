@@ -21,9 +21,23 @@ func TestLoadConfigRequiresEncryptionKeyLength(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRejectsPlaceholderEncryptionKey(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://router:pass@localhost:5432/router")
+	for _, key := range []string{
+		"change-this-encryption-key-before-production-2026",
+		"replace-this-with-a-separate-random-secret-at-least-24-characters",
+		"please-change-this-secret-value-now",
+	} {
+		t.Setenv("ENCRYPTION_KEY", key)
+		if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "placeholder") {
+			t.Fatalf("expected placeholder error for %q, got %v", key, err)
+		}
+	}
+}
+
 func TestLoadConfigDefaultsAndFlags(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://router:pass@localhost:5432/router")
-	t.Setenv("ENCRYPTION_KEY", "a-sufficiently-long-encryption-key")
+	t.Setenv("ENCRYPTION_KEY", "unit-test-encryption-key-not-for-prod")
 	t.Setenv("LISTEN_ADDR", "")
 	t.Setenv("SMTP_PORT", "")
 	t.Setenv("GEETEST_CAPTCHA_ID", "")

@@ -26,14 +26,24 @@
 
 ## Docker deployment
 
-Copy `.env.example` to `.env`, replace `ENCRYPTION_KEY` and `POSTGRES_PASSWORD` with unique URL-safe secrets, then start the complete stack:
+Copy `.env.example` to `.env`, set unique values for `ENCRYPTION_KEY` (≥24 chars, not a docs placeholder), `POSTGRES_PASSWORD` (URL-safe), and `REDIS_PASSWORD`, then start the complete stack:
 
 ```sh
 cp .env.example .env
+# edit .env — compose refuses to start if required secrets are missing
 docker compose up -d --build
 ```
 
-The web console is available at `http://localhost:3000`; the OpenAI/Anthropic gateway is available at `http://localhost:8080`. PostgreSQL and Redis are internal-only and persist data in the `postgres-data` and `redis-data` volumes. Migrations run automatically when the router starts; if no admin user exists, a bootstrap admin is created and its one-time password is printed in the router logs (`docker compose logs -f router`). Change that password after first login. Stop the stack with `docker compose down` (use `docker compose down -v` only when intentionally deleting data).
+The web console is available at `http://localhost:3000`; the OpenAI/Anthropic gateway is available at `http://localhost:8080`. PostgreSQL and Redis are internal-only (no published ports). Data paths default to `/mnt/data/AI-Router/{postgres,redis}` and can be overridden with `POSTGRES_DATA_PATH` / `REDIS_DATA_PATH`. Redis requires a password (`REDIS_PASSWORD`); the router receives `REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0` by default. Migrations run automatically when the router starts; if no admin user exists, a bootstrap admin is created and its one-time password is printed in the router logs (`docker compose logs -f router`). Change that password after first login.
+
+For an external reverse-proxy network (e.g. Baota `baota_net`):
+
+```sh
+docker network create baota_net   # once
+docker compose -f docker-compose.yml -f docker-compose.baota.yml up -d --build
+```
+
+Stop the stack with `docker compose down` (use `docker compose down -v` only when intentionally deleting named volumes).
 
 ### Admin web console
 
@@ -261,7 +271,7 @@ Use this before exposing the stack on a public host.
 
 ### Secrets and identity
 
-1. Copy `.env.example` to `.env` and set unique values for `ENCRYPTION_KEY` (≥24 characters) and `POSTGRES_PASSWORD` (URL-safe). **Never rotate `ENCRYPTION_KEY` without re-encrypting provider and payment secrets** — lost keys make ciphertext unrecoverable.
+1. Copy `.env.example` to `.env` and set unique values for `ENCRYPTION_KEY` (≥24 characters, not a documented placeholder), `POSTGRES_PASSWORD` (URL-safe), and `REDIS_PASSWORD`. Compose and the router refuse insecure/missing secrets. **Never rotate `ENCRYPTION_KEY` without re-encrypting provider and payment secrets** — lost keys make ciphertext unrecoverable.
 2. On first start with an empty admin table, the router seeds a bootstrap admin (default email `admin@localhost`, overridable with `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_NAME`) and prints a one-time random password in the router logs. Sign in immediately and change the password under Profile → Change password (`PUT /account/password`).
 3. Prefer enabling Geetest and/or SMTP email verification for public registration (`GEETEST_*`, `SMTP_*` or admin site settings). Registration always creates `role=user`; only admins promote accounts.
 
