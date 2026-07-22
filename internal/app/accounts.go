@@ -29,6 +29,14 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "a valid email, name, and password of at least 8 characters are required")
 		return
 	}
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	clientIP := requestMetadata(r).clientIP
+	if s.limiter != nil {
+		if !s.limiter.allow("auth:register:ip:"+clientIP) || !s.limiter.allow("auth:register:email:"+email) {
+			writeError(w, http.StatusTooManyRequests, "rate_limit_exceeded", "too many registration attempts")
+			return
+		}
+	}
 	if s.loadSystemConfig(r.Context()).emailVerificationEnabled() {
 		if strings.TrimSpace(in.Code) == "" {
 			writeError(w, http.StatusBadRequest, "code_required", "the email verification code is required")
@@ -42,7 +50,6 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "captcha_failed", err.Error())
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(in.Email))
 	passwordHash, err := hashPassword(in.Password)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "could not secure password")
