@@ -24,27 +24,40 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 }
 
 func validateRedirectURL(u *url.URL) error {
-	if u == nil || u.Host == "" {
+	if u == nil {
 		return fmt.Errorf("redirect missing host")
+	}
+	return validOutboundURL(u.String())
+}
+
+// validOutboundURL accepts:
+//   - https:// to a public hostname or public IP (blocks private/link-local/loopback IP literals)
+//   - http:// only to loopback (local services such as Ollama)
+func validOutboundURL(value string) error {
+	u, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("must be an HTTPS URL (HTTP is allowed for loopback)")
 	}
 	host := u.Hostname()
 	switch strings.ToLower(u.Scheme) {
 	case "https":
-		if isUnsafeRedirectHost(host) {
-			return fmt.Errorf("redirect to non-public host is not allowed")
+		if isNonPublicHost(host) {
+			return fmt.Errorf("https URL must not target private, link-local, or loopback hosts")
 		}
 		return nil
 	case "http":
 		if !isLoopbackHost(host) {
-			return fmt.Errorf("redirect to non-loopback HTTP is not allowed")
+			return fmt.Errorf("http is only allowed for loopback hosts")
 		}
 		return nil
 	default:
-		return fmt.Errorf("redirect scheme %q is not allowed", u.Scheme)
+		return fmt.Errorf("scheme must be https (or http for loopback)")
 	}
 }
 
-func isUnsafeRedirectHost(host string) bool {
+// isNonPublicHost reports whether host is empty, localhost, or a non-public IP literal.
+// Non-IP hostnames are treated as public (DNS-based SSRF is out of scope for this check).
+func isNonPublicHost(host string) bool {
 	if host == "" || strings.EqualFold(host, "localhost") {
 		return true
 	}
@@ -52,8 +65,9 @@ func isUnsafeRedirectHost(host string) bool {
 	if ip == nil {
 		return false
 	}
-	if ip.IsLoopback() {
-		return true
-	}
-	return ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast()
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast()
+}
+
+func isUnsafeRedirectHost(host string) bool {
+	return isNonPublicHost(host)
 }
