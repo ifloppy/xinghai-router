@@ -24,68 +24,69 @@ const selectMultiClass = 'flex min-h-9 w-full rounded-md border border-input bg-
 </script>
 
 <template>
-  <Dialog :open="Boolean(selectedUser)" @update:open="v => !v && ((selectedUser = null) || (originalUser = null))">
-    <DialogContent class="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>{{ t('editUser') }}</DialogTitle>
-        <DialogDescription class="font-mono">{{ selectedUser?.id }}</DialogDescription>
-      </DialogHeader>
-      <form v-if="selectedUser" class="grid gap-4" @submit.prevent="saveUserAccess">
-        <div class="flex flex-col gap-2">
-          <Label>{{ t('nameLabel') }}</Label>
-          <Input v-model="selectedUser.name" required maxlength="100" />
-        </div>
-        <div class="flex flex-col gap-2">
-          <Label>{{ t('emailLabel') }}</Label>
-          <Input v-model="selectedUser.email" required type="email" />
-        </div>
-        <div class="flex flex-col gap-2">
-          <Label>{{ t('newPassword') }} <span class="text-xs text-muted-foreground">{{ t('leaveEmptyToKeep') }}</span></Label>
-          <Input v-model="userPassword" type="password" minlength="8" autocomplete="new-password" />
-        </div>
-        <div class="grid grid-cols-2 gap-4">
+  <Sheet :open="Boolean(selectedUser)" @update:open="v => !v && ((selectedUser = null) || (originalUser = null))">
+    <SheetContent side="right" class="w-full sm:max-w-lg">
+      <SheetHeader>
+        <SheetTitle>{{ t('editUser') }}</SheetTitle>
+      </SheetHeader>
+      <form v-if="selectedUser" class="flex flex-1 flex-col overflow-y-auto px-6" @submit.prevent="saveUserAccess">
+        <div class="flex flex-col gap-5">
           <div class="flex flex-col gap-2">
-            <Label>{{ t('accountStatus') }}</Label>
-            <select v-model="selectedUser.enabled" :class="selectClass">
-              <option :value="true">{{ t('enabled') }}</option>
-              <option :value="false">{{ t('disabled') }}</option>
-            </select>
+            <Label>{{ t('nameLabel') }}</Label>
+            <Input v-model="selectedUser.name" required maxlength="100" />
           </div>
           <div class="flex flex-col gap-2">
-            <Label>{{ t('roleLabel') }}</Label>
-            <select v-model="selectedUser.role" :class="selectClass">
-              <option value="user">{{ t('userRole') }}</option>
-              <option value="operator">{{ t('operatorRole') }}</option>
-              <option value="admin">{{ t('adminRoleFull') }}</option>
+            <Label>{{ t('emailLabel') }}</Label>
+            <Input v-model="selectedUser.email" required type="email" />
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label>{{ t('newPassword') }} <span class="text-xs text-muted-foreground">{{ t('leaveEmptyToKeep') }}</span></Label>
+            <Input v-model="userPassword" type="password" minlength="8" autocomplete="new-password" />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-2">
+              <Label>{{ t('accountStatus') }}</Label>
+              <select v-model="selectedUser.enabled" :class="selectClass">
+                <option :value="true">{{ t('enabled') }}</option>
+                <option :value="false">{{ t('disabled') }}</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-2">
+              <Label>{{ t('roleLabel') }}</Label>
+              <select v-model="selectedUser.role" :class="selectClass">
+                <option value="user">{{ t('userRole') }}</option>
+                <option value="operator">{{ t('operatorRole') }}</option>
+                <option value="admin">{{ t('adminRoleFull') }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label>{{ t('balanceLabel') }}</Label>
+            <Input v-model.number="userBalance" required type="number" min="0" step="0.00000001" />
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label>{{ t('balanceChangeNote') }}</Label>
+            <Input v-model="userBalanceNote" maxlength="200" :placeholder="t('balanceNotePlaceholder')" />
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label>{{ t('userGroupsLabel') }}</Label>
+            <select v-model="selectedGroups" multiple size="5" :class="selectMultiClass">
+              <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }} · {{ Number(group.multiplier).toFixed(2) }}x</option>
+            </select>
+          </div>
+          <div v-if="selectedUser.role !== 'admin'" class="flex flex-col gap-2">
+            <Label>{{ t('granularPermissions') }}</Label>
+            <select v-model="selectedPermissions" multiple size="8" :class="selectMultiClass">
+              <option v-for="permission in permissions" :key="permission" :value="permission">{{ permission }}</option>
             </select>
           </div>
         </div>
-        <div class="flex flex-col gap-2">
-          <Label>{{ t('balanceLabel') }}</Label>
-          <Input v-model.number="userBalance" required type="number" min="0" step="0.00000001" />
-        </div>
-        <div class="flex flex-col gap-2">
-          <Label>{{ t('balanceChangeNote') }}</Label>
-          <Input v-model="userBalanceNote" maxlength="200" :placeholder="t('balanceNotePlaceholder')" />
-        </div>
-        <div class="flex flex-col gap-2">
-          <Label>{{ t('userGroupsLabel') }}</Label>
-          <select v-model="selectedGroups" multiple size="5" :class="selectMultiClass">
-            <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }} · {{ Number(group.multiplier).toFixed(2) }}x</option>
-          </select>
-        </div>
-        <div v-if="selectedUser.role !== 'admin'" class="flex flex-col gap-2">
-          <Label>{{ t('granularPermissions') }}</Label>
-          <select v-model="selectedPermissions" multiple size="8" :class="selectMultiClass">
-            <option v-for="permission in permissions" :key="permission" :value="permission">{{ permission }}</option>
-          </select>
-        </div>
-        <DialogFooter>
+        <SheetFooter class="mt-auto px-0 pb-6">
           <Button type="submit" :disabled="busy" class="w-full">{{ t('saveChanges') }}</Button>
-        </DialogFooter>
+        </SheetFooter>
       </form>
-    </DialogContent>
-  </Dialog>
+    </SheetContent>
+  </Sheet>
 
   <Dialog :open="showKey" @update:open="v => !v && (showKey = false)">
     <DialogContent class="sm:max-w-md">
