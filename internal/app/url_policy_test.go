@@ -25,6 +25,7 @@ func TestValidPublicURL(t *testing.T) {
 	for _, value := range []string{
 		"https://pay.example.com",
 		"https://pay.example.com/path",
+		"https://8.8.8.8",
 		"http://localhost",
 		"http://localhost:3000",
 		"http://127.0.0.1:8080",
@@ -41,9 +42,36 @@ func TestValidPublicURL(t *testing.T) {
 		"http://evil.example.com",
 		"http://8.8.8.8",
 		"https://",
+		"https://169.254.169.254/latest/meta-data",
+		"https://10.0.0.5/internal",
+		"https://127.0.0.1/secret",
+		"https://192.168.1.1/",
 	} {
 		if err := validPublicURL(value); err == nil {
 			t.Fatalf("validPublicURL(%q) expected error", value)
+		}
+	}
+}
+
+func TestValidOutboundURL(t *testing.T) {
+	for _, value := range []string{
+		"https://api.openai.com",
+		"http://127.0.0.1:11434",
+		"http://localhost:11434",
+	} {
+		if err := validOutboundURL(value); err != nil {
+			t.Fatalf("validOutboundURL(%q) = %v", value, err)
+		}
+	}
+	for _, value := range []string{
+		"https://169.254.169.254/",
+		"https://10.1.2.3/",
+		"https://172.16.0.1/",
+		"https://[::1]/",
+		"http://example.com",
+	} {
+		if err := validOutboundURL(value); err == nil {
+			t.Fatalf("validOutboundURL(%q) expected error", value)
 		}
 	}
 }

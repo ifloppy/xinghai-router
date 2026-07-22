@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
@@ -188,6 +187,5 @@ func validSMTPPort(port string) bool {
 }
 
 func validIconURL(value string) bool {
-	u, err := url.Parse(value)
-	return err == nil && u.Host != "" && (u.Scheme == "https" || (u.Scheme == "http" && isLoopbackHost(u.Hostname())))
+	return validOutboundURL(value) == nil
 }
