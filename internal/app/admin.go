@@ -1287,6 +1287,7 @@ func (s *Service) runMigration(w http.ResponseWriter, r *http.Request) {
 	if in.SourceDriver == "" {
 		in.SourceDriver = "mysql"
 	}
+	in.SourceDSN = strings.TrimPrefix(in.SourceDSN, "mysql://")
 
 	log.Printf("Migration requested: driver=%s source=%s target=%s", in.SourceDriver, in.SourceDSN, s.cfg.DatabaseURL)
 
