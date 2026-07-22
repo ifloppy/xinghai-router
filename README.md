@@ -272,7 +272,7 @@ Use this before exposing the stack on a public host.
 ### Secrets and identity
 
 1. Copy `.env.example` to `.env` and set unique values for `ENCRYPTION_KEY` (≥24 characters, not a documented placeholder), `POSTGRES_PASSWORD` (URL-safe), and `REDIS_PASSWORD`. Compose and the router refuse insecure/missing secrets. **Never rotate `ENCRYPTION_KEY` without re-encrypting provider and payment secrets** — lost keys make ciphertext unrecoverable.
-2. On first start with an empty admin table, the router seeds a bootstrap admin (default email `admin@localhost`, overridable with `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_NAME`) and prints a one-time random password in the router logs. Sign in immediately and change the password under Profile → Change password (`PUT /account/password`).
+2. On first start with an empty admin table, the router seeds a bootstrap admin (default email `admin@localhost`, overridable with `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_NAME`) and prints a one-time random password in the router logs. The account is created with `must_change_password=true`: session-authenticated APIs except `/account/me`, `/account/password`, and `/auth/logout` return `403 password_change_required` until the password is changed under Profile → Change password (`PUT /account/password`).
 3. Prefer enabling Geetest and/or SMTP email verification for public registration (`GEETEST_*`, `SMTP_*` or admin site settings). Registration always creates `role=user`; only admins promote accounts.
 
 ### Network and TLS
