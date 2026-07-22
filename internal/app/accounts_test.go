@@ -40,6 +40,7 @@ func TestValidatePasswordChange(t *testing.T) {
 		{"", "new-password"},
 		{"old-password", ""},
 		{"old-password", "short"},
+		{"old-password", strings.Repeat("a", 73)},
 		{"same-password", "same-password"},
 	}
 	for _, tc := range cases {
