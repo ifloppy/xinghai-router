@@ -1,4 +1,6 @@
 .env
+vendor/
+*.tar
 bin/
 /router
 cmd/router/router
