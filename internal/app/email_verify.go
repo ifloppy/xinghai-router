@@ -128,8 +128,14 @@ func (s *Service) sendEmailCode(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	var exists bool
-	if err := s.db.QueryRow(ctx, `select exists(select 1 from users where email=$1)`, email).Scan(&exists); err == nil && exists {
-		writeError(w, http.StatusConflict, "email_registered", "this email is already registered")
+	if err := s.db.QueryRow(ctx, `select exists(select 1 from users where email=$1)`, email).Scan(&exists); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "could not check email")
+		return
+	}
+	// Always return the same success shape so callers cannot probe whether an
+	// address is already registered. Skip send/store for existing accounts.
+	if exists {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
 		return
 	}
 	var lastSent time.Time
