@@ -193,7 +193,11 @@ func (s *Service) changeAccountPassword(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "internal_error", "could not update password")
 		return
 	}
-	s.audit(r, "account.password_changed", "user", account.userID, nil)
+	if _, err = s.db.Exec(r.Context(), `delete from user_sessions where user_id=$1 and token_hash<>$2`, account.userID, hashSecret(bearer(r))); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "could not revoke other sessions")
+		return
+	}
+	s.audit(r, "account.password_changed", "user", account.userID, map[string]any{"other_sessions_revoked": true})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
