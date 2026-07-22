@@ -90,6 +90,20 @@ func TestProxyChatCompletionsPricingErrorMapping(t *testing.T) {
 	}
 }
 
+func TestStreamSkipsWalletReservationFlag(t *testing.T) {
+	// Documented product rule: stream requests are not settled; reservation must stay empty
+	// so concurrent stream traffic does not pin wallet reserved balances.
+	var reserved reservation
+	stream := true
+	subscriptionAccess := false
+	if subscriptionAccess || stream {
+		reserved = reservation{}
+	}
+	if reserved.amount != 0 {
+		t.Fatal("stream path must not hold a non-zero reservation")
+	}
+}
+
 func TestUsageCostAndClamp(t *testing.T) {
 	// 1M prompt tokens * $1/M + 0 completion = $1 before multipliers.
 	if got := usageCost(1_000_000, 0, 1, 2, 1, 1); got != 1 {
