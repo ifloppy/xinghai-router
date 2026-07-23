@@ -210,6 +210,7 @@ func TestCreateAndUpdateGroupRejectInvalidMultipliers(t *testing.T) {
 		`{"name":"g","multiplier":-1}`,
 		`{"name":"g","multiplier":"nan"}`,
 		`{"name":"g","multiplier":"Inf"}`,
+		`{"name":"g","multiplier":1000.01}`,
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, "/admin/groups", strings.NewReader(body))
@@ -222,6 +223,7 @@ func TestCreateAndUpdateGroupRejectInvalidMultipliers(t *testing.T) {
 		`{"multiplier":-1}`,
 		`{"multiplier":"nan"}`,
 		`{"multiplier":"-Inf"}`,
+		`{"multiplier":1001}`,
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPut, "/admin/groups/group-id", strings.NewReader(body))
@@ -252,6 +254,12 @@ func TestValidFiniteHelpers(t *testing.T) {
 	}
 	if !validPositiveFinite(0.01) || validPositiveFinite(0) || validPositiveFinite(math.Inf(-1)) {
 		t.Fatal("unexpected positive finite validation")
+	}
+	if !validGroupMultiplier(0) || !validGroupMultiplier(maxGroupMultiplier) {
+		t.Fatal("boundary group multipliers must be valid")
+	}
+	if validGroupMultiplier(-0.01) || validGroupMultiplier(maxGroupMultiplier+0.01) || validGroupMultiplier(math.NaN()) {
+		t.Fatal("out-of-range group multipliers must be invalid")
 	}
 }
 
