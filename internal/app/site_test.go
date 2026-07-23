@@ -26,8 +26,13 @@ func TestUpdateSiteSettingsRejectsInvalidBeforeDatabase(t *testing.T) {
 		`{"name":""}`,
 		`{"name":"` + strings.Repeat("n", 101) + `"}`,
 		`{"name":"Site","icon_url":"http://evil.example.com/x"}`,
+		`{"name":"Site","icon_url":"https://cdn.example.com/` + strings.Repeat("a", 2040) + `"}`,
 		`{"name":"Site","smtp_port":"0"}`,
 		`{"name":"Site","smtp_from":"not-an-email"}`,
+		`{"name":"Site","smtp_host":"` + strings.Repeat("h", 256) + `"}`,
+		`{"name":"Site","geetest_captcha_id":"` + strings.Repeat("g", 257) + `"}`,
+		`{"name":"Site","geetest_captcha_key":"` + strings.Repeat("k", 257) + `"}`,
+		`{"name":"Site","smtp_password":"` + strings.Repeat("p", 4097) + `"}`,
 		`not-json`,
 	}
 	for _, body := range cases {
@@ -45,6 +50,9 @@ func TestUpdatePaymentSettingsRejectsInvalidEnabledConfigBeforeDatabase(t *testi
 		`{"enabled":true,"base_url":"http://evil.example.com","public_base_url":"https://app.example.com","merchant_id":"1","merchant_key":"k"}`,
 		`{"enabled":true,"base_url":"https://pay.example.com","public_base_url":"http://evil.example.com","merchant_id":"1","merchant_key":"k"}`,
 		`{"enabled":true,"base_url":"https://pay.example.com","public_base_url":"https://app.example.com","merchant_id":"","merchant_key":"k"}`,
+		`{"enabled":false,"base_url":"https://` + strings.Repeat("a", 2040) + `.example.com","public_base_url":"https://app.example.com","merchant_id":"1"}`,
+		`{"enabled":false,"base_url":"https://pay.example.com","public_base_url":"https://app.example.com","merchant_id":"` + strings.Repeat("m", 129) + `"}`,
+		`{"enabled":false,"base_url":"https://pay.example.com","public_base_url":"https://app.example.com","merchant_id":"1","merchant_key":"` + strings.Repeat("k", 4097) + `"}`,
 		`not-json`,
 	}
 	for _, body := range cases {
