@@ -95,15 +95,20 @@ func (s *Service) upsertPricing(w http.ResponseWriter, r *http.Request) {
 		Output     float64 `json:"output_per_million"`
 		Multiplier float64 `json:"multiplier"`
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.Model) == "" || !validNonNegativeFinite(in.Input) || !validNonNegativeFinite(in.Cached) || !validNonNegativeFinite(in.Output) {
+	if decode(r, &in) != nil {
+		writeError(w, 400, "invalid_request", "invalid pricing rule")
+		return
+	}
+	in.Model = strings.TrimSpace(in.Model)
+	if !validPricingModel(in.Model) || !validPricingRate(in.Input) || !validPricingRate(in.Cached) || !validPricingRate(in.Output) {
 		writeError(w, 400, "invalid_request", "invalid pricing rule")
 		return
 	}
 	if in.Multiplier == 0 {
 		in.Multiplier = 1
 	}
-	if !validPositiveFinite(in.Multiplier) {
-		writeError(w, 400, "invalid_request", "multiplier must be a positive finite number")
+	if !validPricingMultiplier(in.Multiplier) {
+		writeError(w, 400, "invalid_request", "multiplier must be between 0 exclusive and 1000")
 		return
 	}
 	id, _ := randomID()
@@ -856,9 +861,23 @@ func validPositiveFinite(value float64) bool {
 }
 
 const maxGroupMultiplier = 1000.0
+const maxPricingMultiplier = 1000.0
+const maxPricingRate = 1_000_000.0
 
 func validGroupMultiplier(value float64) bool {
 	return validNonNegativeFinite(value) && value <= maxGroupMultiplier
+}
+
+func validPricingMultiplier(value float64) bool {
+	return validPositiveFinite(value) && value <= maxPricingMultiplier
+}
+
+func validPricingRate(value float64) bool {
+	return validNonNegativeFinite(value) && value <= maxPricingRate
+}
+
+func validPricingModel(model string) bool {
+	return len(model) > 0 && len(model) <= 200
 }
 
 func validChannelProvider(provider string) bool {

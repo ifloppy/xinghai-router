@@ -195,6 +195,9 @@ func TestUpsertPricingRejectsInvalidValuesBeforeDatabaseAccess(t *testing.T) {
 		`{"model":"m","input_per_million":-1,"cached_input_per_million":0,"output_per_million":1}`,
 		`{"model":"m","input_per_million":1,"cached_input_per_million":0,"output_per_million":1,"multiplier":-1}`,
 		`{"model":"m","input_per_million":1,"cached_input_per_million":0,"output_per_million":1,"multiplier":"nan"}`,
+		`{"model":"m","input_per_million":1,"cached_input_per_million":0,"output_per_million":1,"multiplier":1000.01}`,
+		`{"model":"m","input_per_million":1000000.01,"cached_input_per_million":0,"output_per_million":1}`,
+		`{"model":"` + strings.Repeat("m", 201) + `","input_per_million":1,"cached_input_per_million":0,"output_per_million":1}`,
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, "/admin/pricing", strings.NewReader(body))
@@ -260,6 +263,18 @@ func TestValidFiniteHelpers(t *testing.T) {
 	}
 	if validGroupMultiplier(-0.01) || validGroupMultiplier(maxGroupMultiplier+0.01) || validGroupMultiplier(math.NaN()) {
 		t.Fatal("out-of-range group multipliers must be invalid")
+	}
+	if !validPricingMultiplier(0.01) || !validPricingMultiplier(maxPricingMultiplier) {
+		t.Fatal("boundary pricing multipliers must be valid")
+	}
+	if validPricingMultiplier(0) || validPricingMultiplier(maxPricingMultiplier+0.01) {
+		t.Fatal("out-of-range pricing multipliers must be invalid")
+	}
+	if !validPricingRate(0) || !validPricingRate(maxPricingRate) || validPricingRate(maxPricingRate+1) {
+		t.Fatal("pricing rate bounds unexpected")
+	}
+	if !validPricingModel("m") || validPricingModel("") || validPricingModel(strings.Repeat("m", 201)) {
+		t.Fatal("pricing model bounds unexpected")
 	}
 }
 
