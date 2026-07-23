@@ -439,3 +439,32 @@ func TestSaveProviderRejectsInvalidBeforeDatabase(t *testing.T) {
 		}
 	}
 }
+
+func TestValidChannelName(t *testing.T) {
+	if !validChannelName("openai") || !validChannelName(strings.Repeat("c", 100)) {
+		t.Fatal("expected valid channel names")
+	}
+	if validChannelName("") || validChannelName(strings.Repeat("c", 101)) {
+		t.Fatal("expected invalid channel names")
+	}
+}
+
+func TestCreateChannelRejectsOverlongNameBeforeDatabase(t *testing.T) {
+	body := `{"name":"` + strings.Repeat("n", 101) + `","api_key":"sk","base_url":"https://api.example.com","models":["m"]}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/admin/channels", strings.NewReader(body))
+	(&Service{}).createChannel(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateChannelRejectsOverlongNameBeforeDatabase(t *testing.T) {
+	body := `{"name":"` + strings.Repeat("n", 101) + `","base_url":"https://api.example.com","models":["m"]}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/admin/channels/channel-id", strings.NewReader(body))
+	(&Service{}).updateChannel(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
