@@ -629,8 +629,8 @@ func (s *Service) createGroup(w http.ResponseWriter, r *http.Request) {
 	if in.Multiplier == 0 {
 		in.Multiplier = 1
 	}
-	if !validNonNegativeFinite(in.Multiplier) {
-		writeError(w, 400, "invalid_request", "multiplier must not be negative")
+	if !validGroupMultiplier(in.Multiplier) {
+		writeError(w, 400, "invalid_request", "multiplier must be between 0 and 1000")
 		return
 	}
 	id, _ := randomID()
@@ -657,8 +657,8 @@ func (s *Service) importGroups(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 	for name, multiplier := range values {
 		name = strings.TrimSpace(name)
-		if !validGroupName(name) || !validNonNegativeFinite(multiplier) {
-			writeError(w, 400, "invalid_request", "group names must be 1-100 characters and multipliers must not be negative")
+		if !validGroupName(name) || !validGroupMultiplier(multiplier) {
+			writeError(w, 400, "invalid_request", "group names must be 1-100 characters and multipliers must be between 0 and 1000")
 			return
 		}
 		id, _ := randomID()
@@ -679,8 +679,8 @@ func (s *Service) updateGroup(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Multiplier float64 `json:"multiplier"`
 	}
-	if decode(r, &in) != nil || !validNonNegativeFinite(in.Multiplier) {
-		writeError(w, 400, "invalid_request", "multiplier must not be negative")
+	if decode(r, &in) != nil || !validGroupMultiplier(in.Multiplier) {
+		writeError(w, 400, "invalid_request", "multiplier must be between 0 and 1000")
 		return
 	}
 	result, err := s.db.Exec(r.Context(), `update groups set multiplier=$1 where id=$2`, in.Multiplier, r.PathValue("id"))
@@ -853,6 +853,12 @@ func validNonNegativeFinite(value float64) bool {
 
 func validPositiveFinite(value float64) bool {
 	return validFinite(value) && value > 0
+}
+
+const maxGroupMultiplier = 1000.0
+
+func validGroupMultiplier(value float64) bool {
+	return validNonNegativeFinite(value) && value <= maxGroupMultiplier
 }
 
 func validChannelProvider(provider string) bool {
