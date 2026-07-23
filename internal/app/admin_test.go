@@ -98,6 +98,9 @@ func TestCreateChannelRejectsInvalidRequestBeforeDatabaseAccess(t *testing.T) {
 		`{"name":"channel","api_key":"sk","base_url":"https://10.0.0.8","models":["model"]}`,
 		`{"name":"channel","api_key":"sk","base_url":"https://api.example.com","models":["model"],"priority":10001}`,
 		`{"name":"channel","api_key":"sk","base_url":"https://api.example.com","models":["model"],"priority":-10001}`,
+		`{"name":"channel","api_key":"","base_url":"https://api.example.com","models":["model"]}`,
+		`{"name":"channel","api_key":"` + strings.Repeat("k", 4097) + `","base_url":"https://api.example.com","models":["model"]}`,
+		`{"name":"channel","api_key":"sk","base_url":"https://` + strings.Repeat("a", 2040) + `.example.com","models":["model"]}`,
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, "/admin/channels", strings.NewReader(body))
@@ -554,3 +557,18 @@ func TestCreateKeyRejectsInvalidNameBeforeDatabase(t *testing.T) {
 	}
 }
 
+
+func TestValidChannelAPIKeyAndBaseURL(t *testing.T) {
+	if !validChannelAPIKey("sk") || !validChannelAPIKey(strings.Repeat("k", maxChannelAPIKeyLen)) {
+		t.Fatal("boundary api keys must be valid")
+	}
+	if validChannelAPIKey("") || validChannelAPIKey(strings.Repeat("k", maxChannelAPIKeyLen+1)) {
+		t.Fatal("out-of-range api keys must be invalid")
+	}
+	if !validChannelBaseURL("https://api.example.com") {
+		t.Fatal("public https base_url must be valid")
+	}
+	if validChannelBaseURL("") || validChannelBaseURL("http://api.example.com") || validChannelBaseURL("https://"+strings.Repeat("a", 2040)+".example.com") {
+		t.Fatal("invalid base_url must be rejected")
+	}
+}

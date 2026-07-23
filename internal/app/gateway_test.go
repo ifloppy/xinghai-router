@@ -45,6 +45,8 @@ func TestChatCompletionsRejectsInvalidBodyBeforeUpstream(t *testing.T) {
 		`{"model":""}`,
 		`not-json`,
 		`{"stream":true}`,
+		`{"model":" ` + strings.Repeat("m", 201) + `"}`,
+		`{"model":"` + strings.Repeat("m", 201) + `"}`,
 	} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
