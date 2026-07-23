@@ -48,7 +48,9 @@ func TestUpdateUserRejectsInvalidPartialUpdatesBeforeDatabaseAccess(t *testing.T
 		{name: "short password", body: `{"password":"short"}`},
 		{name: "invalid permission", body: `{"permissions":["unknown"]}`},
 		{name: "negative balance", body: `{"balance":-1}`},
+		{name: "oversized balance", body: `{"balance":1000000000.01}`},
 		{name: "note without balance", body: `{"note":"adjustment"}`},
+		{name: "oversized note", body: `{"balance":1,"note":"` + strings.Repeat("n", 501) + `"}`},
 	}
 
 	for _, test := range tests {

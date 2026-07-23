@@ -262,6 +262,11 @@ func (s *Service) listUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"data": out})
 }
 
+const (
+	maxUserBalance           = 1_000_000_000.0
+	maxUserBalanceNoteLength = 500
+)
+
 func (s *Service) updateUser(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Email       *string   `json:"email"`
@@ -312,13 +317,21 @@ func (s *Service) updateUser(w http.ResponseWriter, r *http.Request) {
 			seen[permission] = true
 		}
 	}
-	if in.Balance != nil && (math.IsNaN(*in.Balance) || math.IsInf(*in.Balance, 0) || *in.Balance < 0) {
-		writeError(w, 400, "invalid_request", "balance must be a non-negative number")
+	if in.Balance != nil && (math.IsNaN(*in.Balance) || math.IsInf(*in.Balance, 0) || *in.Balance < 0 || *in.Balance > maxUserBalance) {
+		writeError(w, 400, "invalid_request", "balance must be a non-negative number up to 1e9")
 		return
 	}
-	if in.Note != nil && in.Balance == nil {
-		writeError(w, 400, "invalid_request", "note can only be provided with balance")
-		return
+	if in.Note != nil {
+		note := strings.TrimSpace(*in.Note)
+		if in.Balance == nil {
+			writeError(w, 400, "invalid_request", "note can only be provided with balance")
+			return
+		}
+		if len(note) > maxUserBalanceNoteLength {
+			writeError(w, 400, "invalid_request", "note must be at most 500 characters")
+			return
+		}
+		*in.Note = note
 	}
 	passwordHash := ""
 	if in.Password != nil {
