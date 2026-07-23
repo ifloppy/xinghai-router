@@ -94,6 +94,10 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "email and password are required")
 		return
 	}
+	if !validPasswordLength(in.Password) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "password must be between 8 and 72 characters")
+		return
+	}
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	clientIP := requestMetadata(r).clientIP
 	if s.limiter != nil {
