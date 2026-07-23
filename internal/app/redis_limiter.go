@@ -131,6 +131,13 @@ func hostFromAddr(addr string) string {
 }
 
 func (l *redisLimiter) tryAllow(key string) (bool, error) {
+	return l.tryAllowN(key, l.perMinute)
+}
+
+func (l *redisLimiter) tryAllowN(key string, n int) (bool, error) {
+	if n <= 0 {
+		n = l.perMinute
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.conn == nil {
@@ -154,7 +161,7 @@ func (l *redisLimiter) tryAllow(key string) (bool, error) {
 	if !ok {
 		return false, fmt.Errorf("unexpected redis reply %T", reply)
 	}
-	return count <= int64(l.perMinute), nil
+	return count <= int64(n), nil
 }
 
 func (l *redisLimiter) resetConn() {

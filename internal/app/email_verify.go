@@ -117,7 +117,7 @@ func (s *Service) sendEmailCode(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	clientIP := requestMetadata(r).clientIP
 	if s.limiter != nil {
-		if !s.limiter.allow("auth:email-code:ip:"+clientIP) || !s.limiter.allow("auth:email-code:email:"+email) {
+		if !s.limiter.allowN("auth:email-code:ip:"+clientIP, authEmailCodePerMinute) || !s.limiter.allowN("auth:email-code:email:"+email, authEmailCodePerMinute) {
 			writeError(w, http.StatusTooManyRequests, "rate_limit_exceeded", "too many verification code requests")
 			return
 		}
