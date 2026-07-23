@@ -829,6 +829,10 @@ func sanitizeChannelModels(models []string) ([]string, bool) {
 	return out, true
 }
 
+func validChannelName(name string) bool {
+	return len(name) > 0 && len(name) <= 100
+}
+
 func (s *Service) setUserRole(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Role string `json:"role"`
@@ -1005,10 +1009,16 @@ func (s *Service) createChannel(w http.ResponseWriter, r *http.Request) {
 		Groups   []string `json:"groups"`
 		Provider string   `json:"provider"`
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.APIKey) == "" {
+	if decode(r, &in) != nil || strings.TrimSpace(in.APIKey) == "" {
 		writeError(w, 400, "invalid_request", "name, api_key, and models are required")
 		return
 	}
+	name := strings.TrimSpace(in.Name)
+	if !validChannelName(name) {
+		writeError(w, 400, "invalid_request", "name must be 1-100 characters")
+		return
+	}
+	in.Name = name
 	modelsList, ok := sanitizeChannelModels(in.Models)
 	if !ok {
 		writeError(w, 400, "invalid_request", "at least one non-empty model name is required")
@@ -1081,10 +1091,16 @@ func (s *Service) updateChannel(w http.ResponseWriter, r *http.Request) {
 		Priority int      `json:"priority"`
 		Provider string   `json:"provider"`
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
+	if decode(r, &in) != nil {
 		writeError(w, 400, "invalid_request", "name and models are required")
 		return
 	}
+	name := strings.TrimSpace(in.Name)
+	if !validChannelName(name) {
+		writeError(w, 400, "invalid_request", "name must be 1-100 characters")
+		return
+	}
+	in.Name = name
 	modelsList, ok := sanitizeChannelModels(in.Models)
 	if !ok {
 		writeError(w, 400, "invalid_request", "at least one non-empty model name is required")
@@ -1104,7 +1120,7 @@ func (s *Service) updateChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	models, _ := json.Marshal(in.Models)
-	args := []any{strings.TrimSpace(in.Name), strings.TrimRight(in.BaseURL, "/"), models, in.Priority, in.Provider, r.PathValue("id")}
+	args := []any{in.Name, strings.TrimRight(in.BaseURL, "/"), models, in.Priority, in.Provider, r.PathValue("id")}
 	query := `update channels set name=$1,base_url=$2,models=$3,priority=$4,provider=$5,updated_at=now() where id=$6`
 	if strings.TrimSpace(in.APIKey) != "" {
 		encrypted, err := crypt(s.cfg.EncryptionKey, in.APIKey, false)
@@ -1112,7 +1128,7 @@ func (s *Service) updateChannel(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 500, "internal_error", "credential encryption failed")
 			return
 		}
-		args = []any{strings.TrimSpace(in.Name), strings.TrimRight(in.BaseURL, "/"), encrypted, models, in.Priority, in.Provider, r.PathValue("id")}
+		args = []any{in.Name, strings.TrimRight(in.BaseURL, "/"), encrypted, models, in.Priority, in.Provider, r.PathValue("id")}
 		query = `update channels set name=$1,base_url=$2,api_key=$3,models=$4,priority=$5,provider=$6,updated_at=now() where id=$7`
 	}
 	result, err := s.db.Exec(r.Context(), query, args...)
