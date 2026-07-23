@@ -308,6 +308,9 @@ func TestAdjustBalanceRejectsInvalidBeforeDatabaseAccess(t *testing.T) {
 		`{"user_id":"","amount":1,"note":"x"}`,
 		`{"user_id":"1","amount":"NaN","note":"x"}`,
 		`{"user_id":"1","amount":"Inf","note":"x"}`,
+		`{"user_id":"1","amount":1000000000.01,"note":"x"}`,
+		`{"user_id":"1","amount":-1000000000.01,"note":"x"}`,
+		`{"user_id":"1","amount":1,"note":"` + strings.Repeat("n", 501) + `"}`,
 	} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/admin/wallets/adjustments", strings.NewReader(body))
@@ -394,6 +397,9 @@ func TestUpsertQuotaRejectsInvalidBeforeDatabaseAccess(t *testing.T) {
 		`{"user_id":"1","window":"day"}`,
 		`{"user_id":"1","window":"day","max_requests":-1}`,
 		`{"api_key_id":"k","window":"month","max_tokens":-5}`,
+		`{"user_id":"1","window":"day","max_requests":1000000000001}`,
+		`{"user_id":"1","window":"day","max_tokens":1000000000001}`,
+		`{"user_id":"1","window":"day","max_requests":1,"model":"` + strings.Repeat("m", 201) + `"}`,
 	} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/admin/quota-limits", strings.NewReader(body))
@@ -401,6 +407,21 @@ func TestUpsertQuotaRejectsInvalidBeforeDatabaseAccess(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("body %s status = %d, want %d", body, rec.Code, http.StatusBadRequest)
 		}
+	}
+}
+
+func TestValidWalletAndQuotaHelpers(t *testing.T) {
+	if !validWalletAdjustAmount(1) || !validWalletAdjustAmount(-maxWalletAdjustAmount) || !validWalletAdjustAmount(maxWalletAdjustAmount) {
+		t.Fatal("boundary wallet amounts must be valid")
+	}
+	if validWalletAdjustAmount(0) || validWalletAdjustAmount(maxWalletAdjustAmount+1) {
+		t.Fatal("out-of-range wallet amounts must be invalid")
+	}
+	var ok int64 = maxQuotaLimit
+	var over int64 = maxQuotaLimit + 1
+	var neg int64 = -1
+	if !validQuotaLimit(nil) || !validQuotaLimit(&ok) || validQuotaLimit(&over) || validQuotaLimit(&neg) {
+		t.Fatal("quota limit bounds unexpected")
 	}
 }
 
