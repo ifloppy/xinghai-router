@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -570,5 +571,39 @@ func TestValidChannelAPIKeyAndBaseURL(t *testing.T) {
 	}
 	if validChannelBaseURL("") || validChannelBaseURL("http://api.example.com") || validChannelBaseURL("https://"+strings.Repeat("a", 2040)+".example.com") {
 		t.Fatal("invalid base_url must be rejected")
+	}
+}
+
+func TestSanitizeChannelModelsCapsCount(t *testing.T) {
+	models := make([]string, maxChannelModels+1)
+	for i := range models {
+		models[i] = "model-" + strconv.Itoa(i)
+	}
+	if _, ok := sanitizeChannelModels(models); ok {
+		t.Fatal("expected more than maxChannelModels to be rejected")
+	}
+	okModels := models[:maxChannelModels]
+	if out, ok := sanitizeChannelModels(okModels); !ok || len(out) != maxChannelModels {
+		t.Fatalf("expected %d models accepted, got ok=%v len=%d", maxChannelModels, ok, len(out))
+	}
+}
+
+func TestImportGroupsRejectsTooManyBeforeDatabase(t *testing.T) {
+	var b strings.Builder
+	b.WriteByte('{')
+	for i := 0; i <= maxGroupImportCount; i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`"g`)
+		b.WriteString(strconv.Itoa(i))
+		b.WriteString(`":1`)
+	}
+	b.WriteByte('}')
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/admin/groups/import", strings.NewReader(b.String()))
+	(&Service{}).importGroups(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }

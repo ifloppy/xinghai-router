@@ -662,6 +662,10 @@ func (s *Service) importGroups(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request", "a non-empty name-to-multiplier object is required")
 		return
 	}
+	if len(values) > maxGroupImportCount {
+		writeError(w, 400, "invalid_request", "at most 500 groups can be imported at once")
+		return
+	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
 		writeError(w, 500, "internal_error", "could not import groups")
@@ -918,7 +922,13 @@ func validChannelPriority(priority int) bool {
 	return priority >= -10000 && priority <= 10000
 }
 
+const maxChannelModels = 500
+const maxGroupImportCount = 500
+
 func sanitizeChannelModels(models []string) ([]string, bool) {
+	if len(models) > maxChannelModels*2 {
+		return nil, false
+	}
 	out := make([]string, 0, len(models))
 	seen := map[string]bool{}
 	for _, model := range models {
@@ -931,6 +941,9 @@ func sanitizeChannelModels(models []string) ([]string, bool) {
 		}
 		seen[model] = true
 		out = append(out, model)
+		if len(out) > maxChannelModels {
+			return nil, false
+		}
 	}
 	if len(out) == 0 {
 		return nil, false
