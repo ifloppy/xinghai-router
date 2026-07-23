@@ -3,11 +3,13 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -46,6 +48,20 @@ func randomPassword(length int) (string, error) {
 	return string(b), nil
 }
 
+type bootstrapConflictDecision string
+
+const (
+	bootstrapConflictRefusePromote bootstrapConflictDecision = "refuse_promote"
+	bootstrapConflictAlreadyAdmin  bootstrapConflictDecision = "already_admin"
+)
+
+func bootstrapConflictPolicy(existingRole string) bootstrapConflictDecision {
+	if existingRole == "admin" {
+		return bootstrapConflictAlreadyAdmin
+	}
+	return bootstrapConflictRefusePromote
+}
+
 func ensureBootstrapAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	tx, err := db.Begin(ctx)
 	if err != nil {
@@ -78,9 +94,24 @@ func ensureBootstrapAdmin(ctx context.Context, db *pgxpool.Pool) error {
 
 	var id string
 	err = tx.QueryRow(ctx, `insert into users(email,name,role,password_hash,must_change_password) values($1,$2,'admin',$3,true)
-		on conflict (email) do update set role='admin', password_hash=excluded.password_hash, name=excluded.name, enabled=true, must_change_password=true
+		on conflict (email) do nothing
 		returning id`, email, name, passwordHash).Scan(&id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			var existingRole string
+			if scanErr := tx.QueryRow(ctx, `select role from users where email=$1`, email).Scan(&existingRole); scanErr != nil {
+				return fmt.Errorf("bootstrap admin conflict lookup: %w", scanErr)
+			}
+			switch bootstrapConflictPolicy(existingRole) {
+			case bootstrapConflictRefusePromote:
+				log.Printf("bootstrap admin skipped: email=%s already exists as role=%s (refusing privilege escalation)", email, existingRole)
+			case bootstrapConflictAlreadyAdmin:
+				log.Printf("bootstrap admin skipped: email=%s already exists as admin (not overwriting credentials)", email)
+			default:
+				log.Printf("bootstrap admin skipped: email=%s already exists as role=%s", email, existingRole)
+			}
+			return nil
+		}
 		return fmt.Errorf("bootstrap admin insert: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `insert into user_wallets(user_id) values($1) on conflict do nothing`, id); err != nil {

@@ -75,3 +75,16 @@ func TestBootstrapAdminEnvIsolation(t *testing.T) {
 		t.Fatal("expected default name after unset")
 	}
 }
+func TestBootstrapConflictPolicy(t *testing.T) {
+	if got := bootstrapConflictPolicy("user"); got != bootstrapConflictRefusePromote {
+		t.Fatalf("role=user => %q, want %q", got, bootstrapConflictRefusePromote)
+	}
+	if got := bootstrapConflictPolicy("admin"); got != bootstrapConflictAlreadyAdmin {
+		t.Fatalf("role=admin => %q, want %q", got, bootstrapConflictAlreadyAdmin)
+	}
+	for _, role := range []string{"", "moderator", "operator"} {
+		if got := bootstrapConflictPolicy(role); got != bootstrapConflictRefusePromote {
+			t.Fatalf("role=%q => %q, want %q", role, got, bootstrapConflictRefusePromote)
+		}
+	}
+}

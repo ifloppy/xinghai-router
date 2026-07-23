@@ -83,6 +83,24 @@ func TestLoginRateLimitBeforeDatabase(t *testing.T) {
 	}
 }
 
+func TestLoginRejectsPasswordLengthBeforeDatabase(t *testing.T) {
+	// No limiter/db: out-of-bounds passwords must fail before bcrypt/DB work.
+	for _, body := range []string{
+		`{"email":"user@example.com","password":"short"}`,
+		`{"email":"user@example.com","password":"` + strings.Repeat("a", 73) + `"}`,
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(body))
+		req.RemoteAddr = "203.0.113.10:12345"
+		(&Service{}).login(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d, want %d", body, rec.Code, http.StatusBadRequest)
+		}
+		if !strings.Contains(rec.Body.String(), "password must be between 8 and 72 characters") {
+			t.Fatalf("body %s response = %q, want password length message", body, rec.Body.String())
+		}
+	}
+}
 func TestRegisterRateLimitBeforeDatabase(t *testing.T) {
 	s := &Service{limiter: &sequenceLimiter{remaining: 0}}
 	rec := httptest.NewRecorder()
