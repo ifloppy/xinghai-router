@@ -114,3 +114,15 @@ func TestAnthropicMessagesRequiresVersionHeader(t *testing.T) {
 		t.Fatalf("status/body = %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAnthropicMessagesRejectsLongModel(t *testing.T) {
+	rec := httptest.NewRecorder()
+	body := `{"model":"` + strings.Repeat("m", 201) + `","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	req = req.WithContext(context.WithValue(req.Context(), contextKey{}, keyContext{userID: "1", keyID: "k"}))
+	(&Service{}).anthropicMessages(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}

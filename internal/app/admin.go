@@ -946,6 +946,19 @@ func validChannelName(name string) bool {
 	return len(name) > 0 && len(name) <= 100
 }
 
+const (
+	maxChannelAPIKeyLen  = 4096
+	maxChannelBaseURLLen = 2048
+)
+
+func validChannelAPIKey(value string) bool {
+	return len(value) > 0 && len(value) <= maxChannelAPIKeyLen
+}
+
+func validChannelBaseURL(value string) bool {
+	return len(value) > 0 && len(value) <= maxChannelBaseURLLen && validOutboundURL(value) == nil
+}
+
 func validAPIKeyName(name string) bool {
 	return len(name) > 0 && len(name) <= 100
 }
@@ -1192,7 +1205,7 @@ func (s *Service) createChannel(w http.ResponseWriter, r *http.Request) {
 		Groups   []string `json:"groups"`
 		Provider string   `json:"provider"`
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.APIKey) == "" {
+	if decode(r, &in) != nil {
 		writeError(w, 400, "invalid_request", "name, api_key, and models are required")
 		return
 	}
@@ -1202,6 +1215,11 @@ func (s *Service) createChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Name = name
+	in.APIKey = strings.TrimSpace(in.APIKey)
+	if !validChannelAPIKey(in.APIKey) {
+		writeError(w, 400, "invalid_request", "api_key must be 1-4096 characters")
+		return
+	}
 	modelsList, ok := sanitizeChannelModels(in.Models)
 	if !ok {
 		writeError(w, 400, "invalid_request", "at least one non-empty model name is required")
@@ -1233,8 +1251,9 @@ func (s *Service) createChannel(w http.ResponseWriter, r *http.Request) {
 			groupIDs = append(groupIDs, groupID)
 		}
 	}
-	if validOutboundURL(in.BaseURL) != nil {
-		writeError(w, 400, "invalid_request", "base_url must use HTTPS to a public host, or HTTP to loopback")
+	in.BaseURL = strings.TrimSpace(in.BaseURL)
+	if !validChannelBaseURL(in.BaseURL) {
+		writeError(w, 400, "invalid_request", "base_url must be 1-2048 characters and use HTTPS to a public host, or HTTP to loopback")
 		return
 	}
 	encrypted, err := crypt(s.cfg.EncryptionKey, in.APIKey, false)
@@ -1304,14 +1323,20 @@ func (s *Service) updateChannel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request", "priority must be between -10000 and 10000")
 		return
 	}
-	if validOutboundURL(in.BaseURL) != nil {
-		writeError(w, 400, "invalid_request", "base_url must use HTTPS to a public host, or HTTP to loopback")
+	in.BaseURL = strings.TrimSpace(in.BaseURL)
+	if !validChannelBaseURL(in.BaseURL) {
+		writeError(w, 400, "invalid_request", "base_url must be 1-2048 characters and use HTTPS to a public host, or HTTP to loopback")
+		return
+	}
+	in.APIKey = strings.TrimSpace(in.APIKey)
+	if in.APIKey != "" && !validChannelAPIKey(in.APIKey) {
+		writeError(w, 400, "invalid_request", "api_key must be 1-4096 characters")
 		return
 	}
 	models, _ := json.Marshal(in.Models)
 	args := []any{in.Name, strings.TrimRight(in.BaseURL, "/"), models, in.Priority, in.Provider, r.PathValue("id")}
 	query := `update channels set name=$1,base_url=$2,models=$3,priority=$4,provider=$5,updated_at=now() where id=$6`
-	if strings.TrimSpace(in.APIKey) != "" {
+	if in.APIKey != "" {
 		encrypted, err := crypt(s.cfg.EncryptionKey, in.APIKey, false)
 		if err != nil {
 			writeError(w, 500, "internal_error", "credential encryption failed")
