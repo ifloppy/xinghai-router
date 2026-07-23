@@ -468,3 +468,28 @@ func TestUpdateChannelRejectsOverlongNameBeforeDatabase(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+func TestValidAPIKeyName(t *testing.T) {
+	if !validAPIKeyName("default") || !validAPIKeyName(strings.Repeat("k", 100)) {
+		t.Fatal("expected valid API key names")
+	}
+	if validAPIKeyName("") || validAPIKeyName(strings.Repeat("k", 101)) {
+		t.Fatal("expected invalid API key names")
+	}
+}
+
+func TestCreateKeyRejectsInvalidNameBeforeDatabase(t *testing.T) {
+	for _, body := range []string{
+		`{"user_id":"1","name":" "}`,
+		`{"user_id":"1","name":"` + strings.Repeat("n", 101) + `"}`,
+		`{"user_id":"","name":"ok"}`,
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/admin/keys", strings.NewReader(body))
+		(&Service{}).createKey(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d", body, rec.Code)
+		}
+	}
+}
+
