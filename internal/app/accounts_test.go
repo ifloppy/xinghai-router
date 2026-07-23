@@ -55,6 +55,10 @@ type sequenceLimiter struct {
 }
 
 func (l *sequenceLimiter) allow(key string) bool {
+	return l.allowN(key, 1)
+}
+
+func (l *sequenceLimiter) allowN(key string, n int) bool {
 	if l.remaining <= 0 {
 		return false
 	}

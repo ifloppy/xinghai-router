@@ -33,7 +33,7 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	clientIP := requestMetadata(r).clientIP
 	if s.limiter != nil {
-		if !s.limiter.allow("auth:register:ip:"+clientIP) || !s.limiter.allow("auth:register:email:"+email) {
+		if !s.limiter.allowN("auth:register:ip:"+clientIP, authRegisterPerMinute) || !s.limiter.allowN("auth:register:email:"+email, authRegisterPerMinute) {
 			writeError(w, http.StatusTooManyRequests, "rate_limit_exceeded", "too many registration attempts")
 			return
 		}
@@ -101,7 +101,7 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	clientIP := requestMetadata(r).clientIP
 	if s.limiter != nil {
-		if !s.limiter.allow("auth:login:ip:"+clientIP) || !s.limiter.allow("auth:login:email:"+email) {
+		if !s.limiter.allowN("auth:login:ip:"+clientIP, authLoginPerMinute) || !s.limiter.allowN("auth:login:email:"+email, authLoginPerMinute) {
 			writeError(w, http.StatusTooManyRequests, "rate_limit_exceeded", "too many login attempts")
 			return
 		}

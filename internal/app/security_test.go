@@ -123,6 +123,29 @@ func TestLimiter(t *testing.T) {
 	}
 }
 
+func TestLimiterAllowN(t *testing.T) {
+	l := newLimiter(60)
+	for i := 0; i < authLoginPerMinute; i++ {
+		if !l.allowN("auth:login:ip:1.2.3.4", authLoginPerMinute) {
+			t.Fatalf("login allow %d failed", i+1)
+		}
+	}
+	if l.allowN("auth:login:ip:1.2.3.4", authLoginPerMinute) {
+		t.Fatal("login should be limited at authLoginPerMinute")
+	}
+	for i := 0; i < authRegisterPerMinute; i++ {
+		if !l.allowN("auth:register:ip:1.2.3.4", authRegisterPerMinute) {
+			t.Fatalf("register allow %d failed", i+1)
+		}
+	}
+	if l.allowN("auth:register:ip:1.2.3.4", authRegisterPerMinute) {
+		t.Fatal("register should be limited at authRegisterPerMinute")
+	}
+	if !l.allow("gateway-key") {
+		t.Fatal("gateway allow uses full perMinute budget independent of auth keys")
+	}
+}
+
 func TestNewRateLimiterFallsBackWithoutRedis(t *testing.T) {
 	l, mode := newRateLimiter("", 10)
 	if mode != "memory" {

@@ -285,7 +285,7 @@ Use this before exposing the stack on a public host.
 
 1. Compose requires `REDIS_PASSWORD` and injects `REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0` so API-key and auth rate limits are shared across router replicas. Without Redis the limiter is process-local.
 2. Horizontal scaling: run multiple router replicas behind the proxy only when Redis-backed limiting is enabled; wallet reservation already lives in PostgreSQL.
-3. Auth endpoints (`/auth/login`, `/auth/register`, `/auth/email-code`) are rate-limited by IP and email via the same limiter keys.
+	3. Auth endpoints are rate-limited by IP and email with stricter per-minute budgets than API keys: login 10, register 5, email-code 5 (API-key gateway still uses `RateLimitPerMinute`, default 60).
 
 ### Operations
 

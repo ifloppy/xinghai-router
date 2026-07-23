@@ -5,8 +5,15 @@ import (
 	"time"
 )
 
+const (
+	authLoginPerMinute     = 10
+	authRegisterPerMinute  = 5
+	authEmailCodePerMinute = 5
+)
+
 type rateLimiter interface {
 	allow(key string) bool
+	allowN(key string, n int) bool
 	close()
 }
 
@@ -31,6 +38,13 @@ func newMemoryLimiter(n int) *memoryLimiter {
 func newLimiter(n int) *memoryLimiter { return newMemoryLimiter(n) }
 
 func (l *memoryLimiter) allow(key string) bool {
+	return l.allowN(key, l.perMinute)
+}
+
+func (l *memoryLimiter) allowN(key string, n int) bool {
+	if n <= 0 {
+		n = l.perMinute
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
@@ -38,7 +52,7 @@ func (l *memoryLimiter) allow(key string) bool {
 	if now.Sub(w.start) >= time.Minute {
 		w = rateWindow{start: now}
 	}
-	if w.count >= l.perMinute {
+	if w.count >= n {
 		l.entries[key] = w
 		return false
 	}
@@ -55,9 +69,13 @@ type fallbackLimiter struct {
 }
 
 func (l *fallbackLimiter) allow(key string) bool {
-	ok, err := l.primary.tryAllow(key)
+	return l.allowN(key, l.backup.perMinute)
+}
+
+func (l *fallbackLimiter) allowN(key string, n int) bool {
+	ok, err := l.primary.tryAllowN(key, n)
 	if err != nil {
-		return l.backup.allow(key)
+		return l.backup.allowN(key, n)
 	}
 	return ok
 }
