@@ -44,8 +44,8 @@ func (s *Service) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Model = strings.TrimSpace(in.Model)
-	if !validModelName(in.Model) || in.MaxTokens <= 0 || len(in.Messages) == 0 {
-		writeError(w, http.StatusBadRequest, "invalid_request", "model must be 1-200 characters; messages and max_tokens are required")
+	if !validModelName(in.Model) || !validGatewayMaxTokens(in.MaxTokens) || len(in.Messages) == 0 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "model must be 1-200 characters; messages and max_tokens (1-200000) are required")
 		return
 	}
 	body, err := anthropicToOpenAI(in)

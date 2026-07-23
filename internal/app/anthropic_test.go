@@ -126,3 +126,15 @@ func TestAnthropicMessagesRejectsLongModel(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+func TestAnthropicMessagesRejectsOversizeMaxTokens(t *testing.T) {
+	rec := httptest.NewRecorder()
+	body := `{"model":"claude","max_tokens":200001,"messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	req = req.WithContext(context.WithValue(req.Context(), contextKey{}, keyContext{userID: "1", keyID: "k"}))
+	(&Service{}).anthropicMessages(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "max_tokens") {
+		t.Fatalf("status/body = %d %s", rec.Code, rec.Body.String())
+	}
+}
